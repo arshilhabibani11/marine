@@ -1,30 +1,23 @@
 /**
  * Root Server Entry Point — Frontend App (alkatraders.co)
  *
- * Hostinger Node.js Web App config for THIS app:
- *   Application root: (blank — repository root)
- *   Build command:    npm install && node ./node_modules/vite/bin/vite.js build
- *   Start command:    node server.js
- *   Entry file:       server.js
- *   Node.js:          22.x
+ * Serve the Vite production build (frontend/dist/) as a static SPA with a
+ * client-side routing fallback.
  *
- * Vite outputs the production build to frontend/dist/ (see vite.config.ts),
- * and this server serves exactly that directory with an SPA fallback.
- * The API lives in a separate Hostinger app (api.alkatraders.co) and is
- * called directly from the browser via VITE_API_URL — no proxying here.
+ * Deployed on Railway as the "web" service:
+ *   Build command: npm run build   (runs vite build + prerender + sitemap)
+ *   Start command: node server.js
+ *   Node.js:       22
  *
- * Self-healing: if the build output is missing at startup (e.g. the deploy
- * build step was skipped or failed), we kick the build off in the background
- * and start listening immediately, serving a warm-up page until index.html
- * exists. Blocking the process here made Hostinger's proxy time out and every
- * request came back 408. If the background build fails too, the warm-up page
- * stays up with a hint instead of crashing (no restart loop).
+ * The API lives in a separate Railway service ("api") and is called directly
+ * from the browser via VITE_API_URL — no proxying here.
+ *
+ * The Hostinger self-heal / warm-up-page logic has been removed: Railway runs
+ * the build step before start, so the dist is always present at boot.
  */
 import express from 'express'
 import path from 'path'
 import fs from 'fs'
-import crypto from 'crypto'
-import { spawn } from 'child_process'
 import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -91,6 +84,15 @@ function computeInlineHashes() {
 const inlineHashes = computeInlineHashes()
 
 function cspPolicy() {
+  // API origin comes from the environment so the same build works on
+  // Hostinger, Railway, or any custom domain without rebuilding.
+  // VITE_API_URL is inlined by Vite into the frontend bundle at build time,
+  // but the CSP is sent by this Express server at runtime — so we read it
+  // from the same env var the frontend uses.
+  const apiOrigin = process.env.VITE_API_URL
+    ? new URL(process.env.VITE_API_URL).origin
+    : 'https://api.alkatraders.co'
+
   const scriptSrc = [
     "'self'",
     'https://www.paypal.com',
@@ -106,7 +108,7 @@ function cspPolicy() {
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' data: blob: https://res.cloudinary.com https://www.paypalobjects.com",
     "font-src 'self' data: https://fonts.gstatic.com",
-    "connect-src 'self' https://api.alkatraders.co https://*.paypal.com https://*.paypalobjects.com",
+    `connect-src 'self' ${apiOrigin} https://*.paypal.com https://*.paypalobjects.com`,
     'frame-src https://www.paypal.com https://sandbox.paypal.com',
     "worker-src 'self' blob:",
     "manifest-src 'self'",
@@ -131,129 +133,15 @@ app.use((req, res, next) => {
   next()
 })
 
-// ─── Non-blocking self-healing build ─────────────────────────────
-let serving = false
+// ─── Serve the built SPA ───────────────────────────────────────────
+// On Railway the build step runs before start, so dist should always be present.
+// If it is somehow missing (e.g. a bad deploy), fail fast rather than looping.
+app.use(express.static(distPath))
 
-// Liveness / readiness for the hosting proxy and uptime monitors.
-// /health/live answers even while the self-heal build is running (the process
-// is alive); /health/ready reports 503 until the build output is in place.
-// Registered before the warm-up middleware and the SPA fallback so monitors
-// never get swallowed by them.
-app.get('/health/live', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() })
-})
-
-app.get('/health/ready', (_req, res) => {
-  if (serving && fs.existsSync(indexPath)) {
-    res.json({ status: 'ok', serving: true, timestamp: new Date().toISOString() })
-  } else {
-    res.status(503).json({ status: 'error', serving: false, timestamp: new Date().toISOString() })
-  }
-})
-
-// Backoff guard: if dist is missing, spawn the on-the-fly build at most
-// once per BUILD_BACKOFF_MS. Without this, every restart spawns a fresh
-// npm install + vite build; a parent process killed mid-build orphans its
-// children, and overlapping builds (npm installs on the same node_modules)
-// pile up processes until Hostinger's account-wide 120-process cap trips
-// resource protection — the source of the intermittent 408s.
-const BUILD_BACKOFF_MS = 30 * 60 * 1000
-const buildAttemptPath = path.join(__dirname, '.build-attempted')
-
-function selfHealDue() {
-  if (!fs.existsSync(buildAttemptPath)) return true
-  try {
-    return Date.now() - Number(fs.readFileSync(buildAttemptPath, 'utf-8')) > BUILD_BACKOFF_MS
-  } catch {
-    return true
-  }
-}
-
-function markBuildAttempt() {
-  fs.writeFileSync(buildAttemptPath, String(Date.now()))
-}
-
-function clearBuildAttempt() {
-  try { fs.unlinkSync(buildAttemptPath) } catch { /* already gone */ }
-}
-
-function registerStaticHandlers() {
-  if (serving) return
-  serving = true
-  // Serve the built SPA
-  app.use(express.static(distPath))
-
-  // SPA fallback — any non-asset route returns index.html so client-side
-  // routing (e.g. /products, /admin) works on refresh / deep links.
-  app.get('*', (_req, res) => {
-    res.sendFile(indexPath)
-  })
-}
-
-if (fs.existsSync(indexPath)) {
-  registerStaticHandlers()
-} else if (!selfHealDue()) {
-  console.error(`X Build not found at ${distPath}`)
-  console.error(`  Last build attempt too recent — holding the warm-up page (next retry in 30 min or on next deploy)`)
-} else {
-  markBuildAttempt()
-  console.error(`X Build not found at ${distPath}`)
-  console.error('  Starting on-the-fly build in the background...')
-  const viteBin = path.join(__dirname, 'node_modules', 'vite', 'bin', 'vite.js')
-  const runBuild = () => {
-    // shell:true — npm/node wrappers are .cmd files on Windows, scripts on Linux.
-    const child = spawn('node', ['./node_modules/vite/bin/vite.js', 'build'], {
-      cwd: __dirname,
-      stdio: 'inherit',
-      shell: process.platform === 'win32',
-    })
-    child.on('error', (err) => {
-      console.error(`X Could not start on-the-fly build: ${err.message}`)
-    })
-    child.on('exit', (code) => {
-      if (code === 0 && fs.existsSync(indexPath)) {
-        clearBuildAttempt()
-        console.log(`V Build finished — now serving ${distPath}`)
-        registerStaticHandlers()
-      } else {
-        console.error(`X On-the-fly build failed (exit code ${code}) — keeping the warm-up page up (retries in 30 min)`)
-      }
-    })
-  }
-  if (!fs.existsSync(viteBin)) {
-    console.error('  vite not installed — installing root dependencies first...')
-    const install = spawn('npm', ['install', '--no-audit', '--no-fund'], {
-      cwd: __dirname,
-      stdio: 'inherit',
-      shell: process.platform === 'win32',
-    })
-    install.on('error', (err) => {
-      console.error(`X Could not start npm install: ${err.message}`)
-    })
-    install.on('exit', (code) => {
-      if (code === 0) {
-        runBuild()
-      } else {
-        console.error(`X npm install failed (exit code ${code}) — keeping the warm-up page up (retries in 30 min)`)
-      }
-    })
-  } else {
-    runBuild()
-  }
-}
-
-// While the build is running, answer instantly instead of hanging so the
-// proxy never times out: fast 204 for /favicon.ico, warm-up page elsewhere.
-app.use((req, res, next) => {
-  if (serving) return next()
-  if (req.url === '/favicon.ico') return res.status(204).end()
-  res.status(503).type('html').send(`<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta http-equiv="refresh" content="10"><title>Starting...</title></head>
-<body style="font-family:system-ui;max-width:640px;margin:80px auto;padding:0 20px">
-<h1>Alka Traders is starting up</h1>
-<p>The production build is being generated right now. This page refreshes automatically and the site will appear when it is ready.</p>
-<p>If this page persists, check the Hostinger deployment log for build errors, then redeploy.</p>
-</body></html>`)
+// SPA fallback — any non-asset route returns index.html so client-side
+// routing (e.g. /products, /admin) works on refresh / deep links.
+app.get('*', (_req, res) => {
+  res.sendFile(indexPath)
 })
 
 const server = app.listen(PORT, '0.0.0.0', () => {
@@ -261,14 +149,14 @@ const server = app.listen(PORT, '0.0.0.0', () => {
 })
 
 // Proxy-friendly socket timeouts: Node's default 5s keepAliveTimeout closes
-// idle keep-alive sockets the Hostinger NGINX proxy still reuses, surfacing
-// as connection resets and 408s.
+// idle keep-alive sockets the platform proxy still reuses, surfacing as
+// connection resets. Values are generous so legitimate long requests are
+// unaffected, while a hung socket cannot hold a worker forever.
 server.keepAliveTimeout = 75_000
 server.headersTimeout = 80_000
 server.requestTimeout = 80_000
 
-// A boot failure (e.g. EADDRINUSE from an orphaned process, invalid PORT)
-// must be visible in the log instead of killing the process silently.
+// A boot failure (e.g. EADDRINUSE, invalid PORT) must be visible in the log.
 server.on('error', (err) => {
   process.stderr.write(`FATAL [startup] listen failed on port ${PORT}: ${err.message}\n`)
   process.exit(1)

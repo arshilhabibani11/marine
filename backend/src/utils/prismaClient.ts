@@ -1,60 +1,15 @@
-// Load env before reading process.env below (see ./env.ts).
+// Load env before reading process.env below (see ./env.js).
 import './env.js'
 
-import { createRequire } from 'node:module'
 import { PrismaClient } from '@prisma/client'
 import { withColdStartRetry } from './dbWake.js'
-
-// Synchronous, *catchable* module loading. A static `import` of a package that
-// isn't installed throws at module-evaluation time and cannot be recovered from,
-// which would take down the whole server. require() lets us degrade gracefully.
-const nodeRequire = createRequire(import.meta.url)
-
-type DbDriver = 'neon-http' | 'neon-ws' | 'postgres-tcp'
-
-// Deliberately NOT `Prisma.LogLevel`. The `Prisma` namespace only carries real
-// types once `prisma generate` has run; against the bare re-export stub shipped
-// in @prisma/client it collapses and fails the build. This union is stable
-// across every Prisma 6.x release.
-type LogLevel = 'query' | 'info' | 'warn' | 'error'
-
-// The require()-loaded adapter is opaque to us by design: we never call into it,
-// we only hand it to Prisma.
-type NeonAdapter = object
-
-// Derived structurally rather than from `Prisma.PrismaClientOptions` so it stays
-// correct without depending on the generated client being present.
-type ClientOptions = NonNullable<ConstructorParameters<typeof PrismaClient>[0]>
-
-// The parts of the options we actually vary. Typed precisely so both call sites
-// stay genuinely checked even though buildClientOptions() casts on the way out.
-type PrismaClientExtraOptions = {
-  adapter?: NeonAdapter
-  datasources?: { db: { url: string } }
-}
 
 const DEFAULT_CONNECT_TIMEOUT = '10'
 const DEFAULT_POOL_TIMEOUT = '10'
 
-const logConfig: LogLevel[] = process.env.NODE_ENV === 'development'
+const logConfig: ('query' | 'info' | 'warn' | 'error')[] = process.env.NODE_ENV === 'development'
   ? ['query', 'error', 'warn']
   : ['error']
-
-let activeDriver: DbDriver = 'postgres-tcp'
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
-/** Host:port only — never the user or password. Safe to log. */
-function parseHost(rawUrl: string | undefined): string {
-  if (!rawUrl) return 'unset'
-  try {
-    return new URL(rawUrl).host || 'unknown'
-  } catch {
-    return 'unparseable'
-  }
-}
 
 /**
  * Ensure the TCP connection string fails fast. Without connect_timeout a blocked
@@ -75,175 +30,58 @@ function withConnectTimeouts(rawUrl: string): string {
   }
 }
 
-/**
- * Assemble the argument for `new PrismaClient()`.
- *
- * The lone cast here is deliberate and load-bearing. `adapter` appears on the
- * client's options type only *after* `prisma generate` has run, because all real
- * Prisma types live in the generated client — `@prisma/client/index.d.ts` is
- * nothing but `export * from '.prisma/client/default'`. A build host that
- * compiles against the un-generated stub (or a cached node_modules predating the
- * last Prisma upgrade) therefore rejects `adapter` at compile time even though
- * the Prisma *runtime* accepts it unconditionally.
- *
- * Keeping the cast in one function leaves the rest of the file fully
- * type-checked, and lets this be deleted outright once every build host is
- * guaranteed to generate the client first (see the postinstall hook).
- */
-function buildClientOptions(extra: PrismaClientExtraOptions): ClientOptions {
-  return { log: logConfig, ...extra } as ClientOptions
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
-/**
- * Build the Neon HTTP driver adapter — plain HTTPS POST requests, NO
- * WebSockets. This is the only Neon driver that works on hosts which silently
- * drop WebSocket egress (observed on Hostinger: WS handshakes hang forever
- * while plain HTTPS works fine). Recommended default for Neon hosts.
- */
-function createNeonHttpAdapter(connectionString: string): NeonAdapter {
-  const { PrismaNeonHTTP } = nodeRequire('@prisma/adapter-neon')
-  // The factory constructs @neondatabase/serverless's neon() HTTP queryable
-  // internally — no neonConfig.webSocketConstructor needed.
-  return new PrismaNeonHTTP(connectionString)
-}
-
-/**
- * Build the Neon WebSocket driver adapter — tunnels Postgres over HTTPS/
- * WebSocket on port 443. Required on hosts that block outbound TCP 5432 but
- * DO allow WebSocket egress (a blocked port makes TCP queries hang forever
- * instead of failing).
- */
-function createNeonWsAdapter(connectionString: string): NeonAdapter {
-  const { neonConfig } = nodeRequire('@neondatabase/serverless')
-  const { PrismaNeon } = nodeRequire('@prisma/adapter-neon')
-  const ws = nodeRequire('ws')
-
-  // Node has no native WebSocket constructor available to the driver, so supply one.
-  neonConfig.webSocketConstructor = ws.default ?? ws
-
-  // @prisma/adapter-neon is pinned to ^6.19, whose constructor takes a config
-  // object. Deliberately no multi-signature probing: older Pool-taking versions
-  // accept the wrong argument without throwing and only fail later at query
-  // time, so a runtime probe cannot reliably tell the shapes apart. The shape is
-  // verified instead by a smoke test against the installed version.
-  return new PrismaNeon({ connectionString })
+/** Host:port only — never the user or password. Safe to log. */
+function parseHost(rawUrl: string | undefined): string {
+  if (!rawUrl) return 'unset'
+  try {
+    return new URL(rawUrl).host || 'unknown'
+  } catch {
+    return 'unparseable'
+  }
 }
 
 function buildPrismaClient(): PrismaClient {
   const rawUrl = process.env.DATABASE_URL
-  const forced = process.env.DB_DRIVER
-  const looksLikeNeon = parseHost(rawUrl).includes('.neon.tech')
 
-  // Driver selection:
-  //   neon-http = HTTPS POST driver (no WebSockets) — works everywhere plain
-  //               HTTPS does. Default for *.neon.tech hosts.
-  //   neon-ws   = WebSocket tunnel over 443.
-  //   tcp       = direct TCP on 5432 (needs open outbound port).
-  // An explicit neon-http/neon-ws falls through to the next driver if it can't
-  // be constructed; tcp is explicit-only (matches historical behavior).
-  const mode = forced ?? (looksLikeNeon ? 'neon-http' : 'tcp')
-
-  if (mode === 'tcp') {
-    activeDriver = 'postgres-tcp'
-    return new PrismaClient(
-      buildClientOptions(
-        rawUrl ? { datasources: { db: { url: withConnectTimeouts(rawUrl) } } } : {},
-      ),
-    )
+  if (!rawUrl) {
+    // Failing here is caught by env.ts validation at startup; this is a
+    // defensive fallback so the module at least constructs.
+    return new PrismaClient({ log: logConfig })
   }
 
-  // HTTP first, then WS, then TCP — each step only runs if construction failed.
-  const order: DbDriver[] = mode === 'neon-ws'
-    ? ['neon-ws', 'neon-http', 'postgres-tcp']
-    : ['neon-http', 'neon-ws', 'postgres-tcp']
-
-  for (const driver of order) {
-    try {
-      if (driver === 'neon-http') {
-        // HTTP mode prefers the direct (non-pooler) endpoint.
-        const adapter = createNeonHttpAdapter(process.env.DIRECT_URL || rawUrl!)
-        activeDriver = 'neon-http'
-        return new PrismaClient(buildClientOptions({ adapter }))
-      }
-      if (driver === 'neon-ws') {
-        const adapter = createNeonWsAdapter(rawUrl!)
-        activeDriver = 'neon-ws'
-        return new PrismaClient(buildClientOptions({ adapter }))
-      }
-      activeDriver = 'postgres-tcp'
-      return new PrismaClient(
-        buildClientOptions(
-          rawUrl ? { datasources: { db: { url: withConnectTimeouts(rawUrl) } } } : {},
-        ),
-      )
-    } catch (error) {
-      // Fall through rather than crashing: a partially working API that reports
-      // the real problem beats a boot loop.
-      process.stderr.write(`WARN: ${driver} driver unavailable, trying next. ${errorMessage(error)}\n`)
-    }
-  }
-
-  activeDriver = 'postgres-tcp'
-  return new PrismaClient(
-    buildClientOptions(
-      rawUrl ? { datasources: { db: { url: withConnectTimeouts(rawUrl) } } } : {},
-    ),
-  )
+  return new PrismaClient({
+    log: logConfig,
+    datasources: {
+      db: { url: withConnectTimeouts(rawUrl) },
+    },
+  })
 }
 
-/**
- * Base client — no retry wrapper. Used by the health/wake endpoints so their
- * own wake loop isn't nested inside the extension's retry.
- */
-export const rawPrisma = buildPrismaClient()
-
-/**
- * App-wide client. Every query (model + raw) is wrapped in a single cold-start
- * retry: when Neon's free tier has scaled the compute to zero, the first query
- * after idle fails — the failed attempt wakes the compute, and the retry a
- * second later succeeds. Without this, the first visitor after ~5 minutes of
- * inactivity hits a 5xx on every route, not just /api/health.
- */
-// One retry of the same shape for every query: attempts = 3 with 800ms/1.6s
-// backoff covers a slow (multi-second) compute wake; healthy-DB queries pay
-// zero overhead because the first attempt succeeds.
-//
-// Retrying writes (create/update/delete) is safe here: Neon only suspends an
-// *idle* compute, and a cold-start failure means the connection died before the
-// query was sent — so the retry re-runs work that never executed. It never
-// double-applies a write, and non-cold-start errors are never retried.
-const retryQuery = <T>(fn: () => Promise<T>): Promise<T> =>
-  withColdStartRetry(fn, { attempts: 3, baseDelayMs: 800 })
-
-export const prisma = rawPrisma.$extends({
-  query: {
-    $allModels: {
-      async $allOperations({ args, query }) {
-        return retryQuery(() => query(args))
-      },
-    },
-    // Raw operations take a single callback receiving { args, query }.
-    // See DynamicQueryExtensionCb in @prisma/client runtime types.
-    $queryRaw: async ({ args, query }) => retryQuery(() => query(args)),
-    $queryRawUnsafe: async ({ args, query }) => retryQuery(() => query(args)),
-    $executeRaw: async ({ args, query }) => retryQuery(() => query(args)),
-    $executeRawUnsafe: async ({ args, query }) => retryQuery(() => query(args)),
-  },
-})
-
-/** Which driver ended up active, for the startup banner and error messages. */
+/** Which database host is configured, for the startup banner and error messages. */
 export function describeDbDriver(): string {
-  switch (activeDriver) {
-    case 'neon-http':
-      return 'neon-http (HTTPS POST, port 443)'
-    case 'neon-ws':
-      return 'neon-ws (WebSocket, port 443)'
-    default:
-      return 'postgres-tcp (port 5432)'
-  }
+  return `postgres-tcp (${parseHost(process.env.DATABASE_URL)})`
 }
 
 /** Redacted database host — safe to write to logs. */
 export function getRedactedDbHost(): string {
   return parseHost(process.env.DATABASE_URL)
 }
+
+/**
+ * App-wide Prisma client.
+ *
+ * Every query is wrapped in a cold-start retry so a brief database blip (cold
+ * start, pool ramp-up, transient network reset) does not surface as a 5xx to
+ * the caller. Non-retryable errors (SQL errors, unique violations, validation
+ * failures) are never retried.
+ */
+const retryQuery = <T>(fn: () => Promise<T>): Promise<T> =>
+  withColdStartRetry(fn, { attempts: 3, baseDelayMs: 800 })
+
+export const prisma = buildPrismaClient()
+
+export const rawPrisma = prisma

@@ -1,7 +1,5 @@
 import { Router } from 'express'
 import multer from 'multer'
-import path from 'path'
-import fs from 'fs'
 import { authenticateAdmin, requireRole, AuthRequest } from '../../middleware/auth.js'
 import { asyncHandler } from '../../middleware/validate.js'
 import { sendSuccess, sendError } from '../../middleware/response.js'
@@ -13,12 +11,10 @@ router.use(authenticateAdmin)
 router.use(requireRole('content-manager'))
 
 // ─── Multer Config ────────────────────────────────────────────
-const UPLOAD_DIR = path.resolve('uploads')
-if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true })
-
-const storage = multer.memoryStorage()
+// Brand logos are uploaded to Cloudinary by brandLogoService, but we still
+// use multer memory storage to receive the file in the request.
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB for logos
   fileFilter: (_req, file, cb) => {
     const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml']

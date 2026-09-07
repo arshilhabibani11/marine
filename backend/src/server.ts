@@ -19,26 +19,32 @@ if (process.env.NODE_ENV === 'production' && !process.env.CORS_ORIGIN) {
   process.env.CORS_ORIGIN = 'https://alkatraders.co'
 }
 
-// Frontend origins for CORS (separate Hostinger app).
-// CORS_ORIGIN from the hosting panel is honored in ALL environments
-// (comma-separated values supported) and merged with the production defaults,
-// so the panel value is never silently ignored.
-const PRODUCTION_CORS_ORIGINS = [
-  'https://alkatraders.co',
-  'https://www.alkatraders.co',
-]
+// Frontend origins for CORS.
+// In production the only valid origins are those explicitly configured via
+// CORS_ORIGIN (comma-separated). A default of https://alkatraders.co is used
+// only when CORS_ORIGIN is unset AND we are in production — on Railway the URL
+// changes per deploy, so the environment variable is the source of truth.
 const ENV_CORS_ORIGINS = (process.env.CORS_ORIGIN || '')
   .split(',')
   .map((o) => o.trim())
   .filter(Boolean)
+
+const PRODUCTION_DEFAULT_ORIGINS = [
+  'https://alkatraders.co',
+  'https://www.alkatraders.co',
+]
+
 const DEVELOPMENT_CORS_ORIGINS = [
   process.env.FRONTEND_URL || 'http://localhost:5173',
-  ...PRODUCTION_CORS_ORIGINS,
+  ...PRODUCTION_DEFAULT_ORIGINS,
   ...ENV_CORS_ORIGINS,
 ]
+
 const CORS_ORIGINS = Array.from(new Set(
   (process.env.NODE_ENV === 'production'
-    ? [...PRODUCTION_CORS_ORIGINS, ...ENV_CORS_ORIGINS]
+    ? ENV_CORS_ORIGINS.length > 0
+      ? ENV_CORS_ORIGINS
+      : PRODUCTION_DEFAULT_ORIGINS
     : DEVELOPMENT_CORS_ORIGINS
   ).filter(Boolean),
 ))
@@ -72,7 +78,7 @@ import { rateLimit } from 'express-rate-limit'
 import crypto from 'crypto'
 import path from 'path'
 import fs from 'fs'
-import { prisma, rawPrisma, describeDbDriver, getRedactedDbHost } from './utils/prismaClient.js'
+import { prisma, rawPrisma, describeDbDriver, getRedactedDbHost } from './utils/prismaClient.js'  // eslint-disable-line import/first
 import { withTimeout } from './utils/withTimeout.js'
 import { wakeDatabase } from './utils/dbWake.js'
 import { sanitize } from './middleware/sanitize.js'
@@ -217,11 +223,6 @@ app.use(compression())
 
 // ─── XSS Sanitization (before routes, after body parsing) ────
 app.use(sanitize)
-
-// ─── Serve uploaded media files (before CSRF — no auth needed) ──
-const UPLOAD_DIR = path.resolve('uploads')
-if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true, mode: 0o755 })
-app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: '1y', immutable: true, index: false }))
 
 // ─── CSRF Protection (after cookies are parsed) ──────────────
 app.get('/api/csrf-token', issueCsrfToken as unknown as express.RequestHandler)
@@ -421,6 +422,7 @@ async function main() {
       `  entry     : ${process.argv[1] || 'unknown'}`,
       `  db driver : ${describeDbDriver()}`,
       `  db host   : ${getRedactedDbHost()}`,
+      `  db url   : ${process.env.DATABASE_URL ? process.env.DATABASE_URL.replace(/:[^:]+@/, ':*@') : 'unset'}`,
       '───────────────────────',
       '',
     ].join('\n'))

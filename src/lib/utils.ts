@@ -31,8 +31,12 @@ const CLOUDINARY_BASE = `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/ima
  * Priority:
  *   1. Cloudinary CDN for product images (product-XXX[_category].jpg)
  *   2. Absolute URLs (http/https) → passed through
- *   3. /uploads/ paths (admin-uploaded images, stored in Cloudinary) → passed through
+ *   3. /uploads/ paths → passed through (legacy; all new uploads go to Cloudinary)
  *   4. Local static files → /images/products/...
+ *
+ * Note: brand logos now upload to Cloudinary too (brandLogoService.ts), so
+ * /uploads/ is only used by any remaining legacy records. No new uploads
+ * write to local disk.
  */
 /**
  * Deterministic SKU base derived from a product name — slugifies to uppercase

@@ -47,14 +47,24 @@ if (isProduction) {
 }
 
 // ─── Frontend URL Resolver ───────────────────────────────────────
-// The Hostinger frontend lives at https://alkatraders.co (API at
-// api.alkatraders.co). Production must NEVER fall back to localhost, or
-// PayPal return URLs, password-reset links and email buttons would point at
-// the admin's machine. Dev keeps the localhost fallback for local testing.
+// Production must NEVER fall back to localhost, or PayPal return URLs,
+// password-reset links and email buttons would point at the admin's machine.
+// Dev keeps the localhost fallback for local testing.
+//
+// On Railway the frontend URL changes per deploy (*.railway.app), so
+// FRONTEND_URL must be set explicitly in production. If it is missing we
+// still refuse localhost but fall back to a placeholder that is obviously
+// wrong — this fails loudly rather than silently sending buyers to the
+// wrong place.
 export function getFrontendUrl(): string {
   const explicit = process.env.FRONTEND_URL?.trim()
   if (explicit) return explicit
-  return isProduction ? 'https://alkatraders.co' : 'http://localhost:5173'
+  if (isProduction) {
+    // No FRONTEND_URL set in production — this is a misconfiguration.
+    // Use a clearly-wrong placeholder so broken links stand out in logs.
+    return 'https://frontend-not-configured.railway.app'
+  }
+  return 'http://localhost:5173'
 }
 
 const missingVars = REQUIRED_ENV_VARS.filter((v) => !process.env[v])
