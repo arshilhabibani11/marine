@@ -14,7 +14,9 @@
     "start": "node server.js",
     "typecheck": "node ./node_modules/typescript/bin/tsc -b --noEmit",
     "lint": "node ./node_modules/eslint/bin/eslint.js .",
-    "preview": "node ./node_modules/vite/bin/vite.js preview"
+    "preview": "node ./node_modules/vite/bin/vite.js preview",
+    "test:e2e": "npx playwright test",
+    "test:e2e:ui": "npx playwright test --ui"
   },
   "dependencies": {
     "@paypal/react-paypal-js": "^10.1.2",
@@ -47,8 +49,9 @@
   "overrides": {
     "brace-expansion": "5.0.8"
   },
-"devDependencies": {
+  "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.62.1",
     "@types/express": "^5.0.2",
     "@types/node": "^24.12.3",
     "@types/papaparse": "^5.2.8",
