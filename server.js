@@ -18,6 +18,7 @@
 import express from 'express'
 import path from 'path'
 import fs from 'fs'
+import crypto from 'crypto'
 import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -26,6 +27,9 @@ const app = express()
 const PORT = process.env.PORT || 3000
 const distPath = path.join(__dirname, 'frontend', 'dist')
 const indexPath = path.join(distPath, 'index.html')
+// Whether the built SPA is actually present — surfaced by the heartbeat so a
+// deploy that somehow lost its dist/ is visible in the runtime log.
+const serving = fs.existsSync(indexPath)
 
 // ─── Observability ───────────────────────────────────────────────
 // Heartbeat proves the process stays alive / detects restarts when the
