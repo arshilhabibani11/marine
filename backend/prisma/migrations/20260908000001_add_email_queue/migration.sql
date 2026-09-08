@@ -1,4 +1,4 @@
-CREATE TABLE "email_queue" (
+CREATE TABLE IF NOT EXISTS "email_queue" (
     "id" UUID NOT NULL,
     "to_email" VARCHAR(255) NOT NULL,
     "to_name" VARCHAR(255),
@@ -18,4 +18,4 @@ CREATE TABLE "email_queue" (
 );
 
 -- CreateIndex
-CREATE INDEX "email_queue_status_idx" ON "email_queue"("status");
+CREATE INDEX IF NOT EXISTS "email_queue_status_idx" ON "email_queue"("status");
