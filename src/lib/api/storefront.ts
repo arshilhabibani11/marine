@@ -107,7 +107,7 @@ export const storefront = {
     create: (data: {
       items: { productId: string; quantity: number; price?: number }[]
       shipping: {
-        fullName: string; addressLine1: string; addressLine2?: string
+        fullName: string; email?: string; addressLine1: string; addressLine2?: string
         city: string; state?: string; postalCode?: string; country: string
       }
       paymentMethod: string; customerNotes?: string; idempotencyKey?: string

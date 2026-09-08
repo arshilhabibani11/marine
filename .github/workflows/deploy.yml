@@ -64,8 +64,9 @@ jobs:
       - name: Type-check (root)
         run: npx tsc -b --noEmit
         continue-on-error: true
-        # The root typecheck has a pre-existing error in Checkout.tsx
-        # (shipping type doesn't accept `email`). It is not a build blocker.
+        # Non-blocking advisory: the root typecheck currently passes, but it is
+        # kept non-blocking so an upcoming type regression cannot break deploys
+        # before it is triaged.
 
       - name: Build frontend
         run: npm run build:frontend
