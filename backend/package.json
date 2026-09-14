@@ -25,7 +25,7 @@
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
-    "express": "^4.21.2",
+    "express": "^5.2.1",
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
@@ -35,7 +35,6 @@
     "nodemailer": "^9.0.5",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
-    "prisma": "^6.19.3",
     "sharp": "^0.35.1",
     "uuid": "^11.1.0",
     "xss": "^1.0.15",
@@ -54,7 +53,11 @@
     "@types/nodemailer": "^8.0.1",
     "@types/pino": "^7.0.4",
     "@types/uuid": "^10.0.0",
-    "typescript": "~5.8.3",
-    "tsx": "^4.19.4"
+    "prisma": "^6.19.3",
+    "tsx": "^4.19.4",
+    "typescript": "~5.8.3"
+  },
+  "overrides": {
+    "qs": "6.16.0"
   }
 }

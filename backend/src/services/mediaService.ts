@@ -68,8 +68,13 @@ export async function listMediaAssets(params: { search?: string; page?: number; 
 }
 
 export async function getMediaUsage(assetId: string) {
+  const asset = await prisma.mediaAsset.findUnique({ where: { id: assetId }, select: { url: true } })
+  if (!asset) throw Object.assign(new Error('Media asset not found'), { status: 404 })
+
   const usage = await prisma.productImage.findMany({
-    where: { mediaAssetId: assetId },
+    // Match both new relational records and legacy records that only stored
+    // the Cloudinary URL.
+    where: { OR: [{ mediaAssetId: assetId }, { url: asset.url }] },
     include: { product: { select: { id: true, name: true, sku: true } } },
   })
   return { usage }
@@ -135,7 +140,9 @@ export async function deleteMedia(assetId: string) {
 
   // Check usage across entities
   const [productImageCount, brandCount, adminUserCount, productCount] = await Promise.all([
-    prisma.productImage.count({ where: { mediaAssetId: assetId } }),
+    // URL matching protects every existing product-image row created before
+    // mediaAssetId started being persisted.
+    prisma.productImage.count({ where: { OR: [{ mediaAssetId: assetId }, { url: asset.url }] } }),
     prisma.brand.count({ where: { logoUrl: asset.url } }),
     prisma.adminUser.count({ where: { avatarUrl: asset.url } }),
     prisma.product.count({ where: { ogImageUrl: asset.url } }),

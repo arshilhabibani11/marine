@@ -213,7 +213,7 @@ function registerStaticHandlers() {
 
   // SPA fallback — any non-asset route returns index.html so client-side
   // routing (e.g. /products, /admin) works on refresh / deep links.
-  app.get("*", (_req, res) => {
+  app.get("/{*splat}", (_req, res) => {
     res.setHeader("Cache-Control", "no-cache");
     res.sendFile(indexPath);
   });

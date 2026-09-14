@@ -47,12 +47,10 @@ setInterval(() => {
   log(`[heartbeat] alive — serving=${serving} uptime=${Math.round(process.uptime())}s`)
 }, 30000).unref()
 
-// ─── Content Security Policy (report-only) ─────────────────────
-// Sent as Content-Security-Policy-Report-Only: the browser enforces nothing
-// but logs every violation it WOULD have blocked (DevTools console), so the
-// policy can be validated against the real site before it is enforced.
-// To enforce later, rename the header below to "Content-Security-Policy".
-// (Mirrors frontend/server.js — both serve the same build.)
+// ─── Content Security Policy ───────────────────────────────────
+// Enforced for every storefront response. The allow-list matches the bundled
+// application: self-hosted assets, Cloudinary images, Google Fonts, the API,
+// and PayPal. Keep this policy aligned when adding a new third-party service.
 //
 // Allowed (drawn from the actual production build):
 //   - Google Fonts:  fonts.googleapis.com (css) + fonts.gstatic.com (woff2)
@@ -125,7 +123,7 @@ function cspPolicy() {
 }
 
 app.use((_req, res, next) => {
-  res.setHeader('Content-Security-Policy-Report-Only', cspPolicy())
+  res.setHeader('Content-Security-Policy', cspPolicy())
   next()
 })
 
@@ -137,6 +135,17 @@ app.use((req, res, next) => {
   next()
 })
 
+// ─── Health checks ─────────────────────────────────────────────────
+// Railway uses /health/live for the web service. Keep this before the SPA
+// fallback so a missing build cannot be reported as a healthy HTML response.
+app.get('/health/live', (_req, res) => {
+  res.status(serving ? 200 : 503).json({ status: serving ? 'ok' : 'error', build: serving ? 'present' : 'missing' })
+})
+
+app.get('/health/ready', (_req, res) => {
+  res.status(serving ? 200 : 503).json({ status: serving ? 'ok' : 'error', build: serving ? 'present' : 'missing' })
+})
+
 // ─── Serve the built SPA ───────────────────────────────────────────
 // On Railway the build step runs before start, so dist should always be present.
 // If it is somehow missing (e.g. a bad deploy), fail fast rather than looping.
@@ -144,7 +153,7 @@ app.use(express.static(distPath))
 
 // SPA fallback — any non-asset route returns index.html so client-side
 // routing (e.g. /products, /admin) works on refresh / deep links.
-app.get('*', (_req, res) => {
+app.get('/{*splat}', (_req, res) => {
   res.sendFile(indexPath)
 })
 

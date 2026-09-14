@@ -61,56 +61,37 @@ export function apiProductToFrontend(api: ApiProduct): Product {
 
   const effectivePrice = isOnSale && salePriceNum ? salePriceNum : regularPrice
 
-  /**
-   * Derive a deterministic image filename from API product data.
-   * Priority order:
-   *   1. Iterate ALL images to find a valid product-XXX[_category].jpg filename
-   *   2. If UUID/path-based → fall back to numeric mapping from last 3 digits of product ID
-   *   3. If no valid digits → placeholder.jpg
-   */
-  // Match product-XXX.jpg OR product-XXX_categoryname.jpg (with optional suffix)
-  const isValidProductImage = (name: string) => /^product-\d{3}(_[a-z0-9-]+)?\.jpg$/.test(name)
+  // Product images uploaded from admin are full Cloudinary URLs. Keep those
+  // URLs intact: converting them to the retired product-### filename scheme
+  // makes the storefront request a non-existent local/static image instead.
+  // Prefer the explicitly marked main image, then the first ordered image.
+  const mainImage = api.images?.find((img) => img.isMain && img.url)?.url
+  const primaryImageUrl = mainImage || api.images?.find((img) => img.url)?.url
 
-  let rawFilename: string | undefined
-  if (api.images?.length) {
-    // Try each image URL to find a valid-looking product filename
-    for (const img of api.images) {
-      const candidate = img.url?.split('/').pop()?.split('?')[0]
-      if (!candidate) continue
-      const normalized = candidate
-        .replace(/^prod-/i, 'product-')
-        .replace(/\.avif$/, '.jpg')
-        .replace(/\.png$/, '.jpg')
-      if (isValidProductImage(normalized)) {
-        rawFilename = normalized
-        break
-      }
-    }
-  }
-
-  if (!rawFilename) {
+  let filename = primaryImageUrl
+  if (!filename) {
+    // Legacy products without an image relation still use the historical
+    // deterministic local/Cloudinary filename mapping.
     // Fallback: extract deterministic number from last 3 hex digits of UUID -> range 1-100
     const idDigits = api.id.replace(/[^a-f0-9]/gi, '').slice(-3)
     const parsed = parseInt(idDigits, 16)
     if (!isNaN(parsed)) {
       const num = String((parsed % 100) + 1).padStart(3, '0')
-      rawFilename = `product-${num}.jpg`
-      console.warn(`[Image Fallback] Product ${api.id} (${api.sku}): no valid image URL, mapped to ${rawFilename}`)
+      filename = `products/product-${num}.jpg`
+      console.warn(`[Image Fallback] Product ${api.id} (${api.sku}): no image URL, mapped to ${filename}`)
     } else {
       // Last resort: try SKU digits
       const skuMatch = api.sku.match(/(\d+)/)
       if (skuMatch) {
         const num = String((parseInt(skuMatch[1], 10) % 100) + 1).padStart(3, '0')
-        rawFilename = `product-${num}.jpg`
-        console.warn(`[Image Fallback] Product ${api.id} (${api.sku}): no valid image URL, mapped from SKU to ${rawFilename}`)
+        filename = `products/product-${num}.jpg`
+        console.warn(`[Image Fallback] Product ${api.id} (${api.sku}): no image URL, mapped from SKU to ${filename}`)
       } else {
-        rawFilename = 'placeholder.jpg'
+        filename = 'products/placeholder.jpg'
         console.warn(`[Image Fallback] Product ${api.id} (${api.sku}): no valid image URL or SKU digits, using placeholder`)
       }
     }
   }
-
-  const filename = rawFilename.startsWith('products/') ? rawFilename : `products/${rawFilename}`
 
   return {
     id: api.id,
@@ -135,21 +116,11 @@ export function apiProductToFrontend(api: ApiProduct): Product {
     customLabel: api.customLabel || undefined,
     customLabelColor: api.customLabelColor || undefined,
     images: api.images?.length
-      ? api.images.map((img) => {
-          let cleanName = (img.url.split('/').pop()?.split('?')[0] || '')
-            .replace(/^prod-/, 'product-')
-            .replace(/\.avif$/, '.jpg')
-            .replace(/\.png$/, '.jpg') || ''
-          // If not a recognizable product-XXX.jpg or product-XXX_category.jpg, use fallback
-          if (!cleanName || !/^product-\d{3}(_[a-z0-9-]+)?\.jpg$/.test(cleanName)) {
-            cleanName = filename.startsWith('products/') ? filename.slice(9) : filename
-          }
-          return {
-            url: `/images/products/${cleanName}`,
-            alt: img.altText || `${api.name} - ${img.label || 'View'}`,
-            label: img.label || undefined,
-          }
-        })
+      ? api.images.map((img) => ({
+          url: img.url,
+          alt: img.altText || `${api.name} - ${img.label || 'View'}`,
+          label: img.label || undefined,
+        }))
       : [{ url: `/images/${filename}`, alt: api.name }],
     isNewArrival: api.isNewArrival,
     makeOffer: api.makeOfferEnabled,

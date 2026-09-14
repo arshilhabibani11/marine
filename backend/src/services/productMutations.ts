@@ -12,6 +12,31 @@ function validateId(id: string): void {
   }
 }
 
+/**
+ * Preserve the media-library relationship for Cloudinary assets selected in a
+ * product form. The URL remains the rendering source, while the relation
+ * prevents the media library from deleting an asset still used by a product.
+ * Manually entered external URLs intentionally remain unlinked.
+ */
+async function createProductImage(productId: string, img: any, sortOrder: number) {
+  const media = await prisma.mediaAsset.findFirst({
+    where: { url: img.url },
+    select: { id: true },
+  })
+
+  return prisma.productImage.create({
+    data: {
+      productId,
+      mediaAssetId: media?.id,
+      url: img.url,
+      altText: img.altText,
+      label: img.label,
+      isMain: img.isMain ?? (sortOrder === 0),
+      sortOrder,
+    },
+  })
+}
+
 // ─── Create Product ────────────────────────────────────────────
 
 export async function createProduct(data: any, actor: AuthUser, ipAddress = '') {
@@ -41,7 +66,7 @@ export async function createProduct(data: any, actor: AuthUser, ipAddress = '') 
     }
     if (images?.length) {
       for (const [i, img] of images.entries()) {
-        await prisma.productImage.create({ data: { productId: product.id, url: img.url, altText: img.altText, label: img.label, isMain: img.isMain ?? (i === 0), sortOrder: i } })
+        await createProductImage(product.id, img, i)
       }
     }
     if (industryIds?.length) {
@@ -107,7 +132,7 @@ export async function updateProduct(id: string, data: any, actor: AuthUser, ipAd
     await prisma.productImage.deleteMany({ where: { productId: id } })
     if (images.length) {
       for (const [i, img] of images.entries()) {
-        await prisma.productImage.create({ data: { productId: id, url: img.url, altText: img.altText, label: img.label, isMain: img.isMain ?? (i === 0), sortOrder: i } })
+        await createProductImage(id, img, i)
       }
     }
   }
@@ -249,7 +274,7 @@ export async function duplicateProduct(id: string, actor: AuthUser, ipAddress = 
     }
     if (source.images.length) {
       for (const [i, img] of source.images.entries()) {
-        await prisma.productImage.create({ data: { productId: product.id, url: img.url, altText: img.altText, label: img.label, isMain: img.isMain, sortOrder: i } })
+        await prisma.productImage.create({ data: { productId: product.id, mediaAssetId: img.mediaAssetId, url: img.url, altText: img.altText, label: img.label, isMain: img.isMain, sortOrder: i } })
       }
     }
     if (source.industries.length) {
