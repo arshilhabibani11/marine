@@ -205,6 +205,14 @@ export interface Order {
 
 // ─── RFQ ───────────────────────────────────────────────────────
 
+export interface RfqNote {
+  id: string
+  note: string
+  isInternal: boolean
+  createdAt: string
+  author?: { id?: string; name: string; email?: string | null } | null
+}
+
 export interface Rfq {
   id: string
   rfqNumber: string
@@ -221,7 +229,9 @@ export interface Rfq {
   deliveryLocation?: string | null
   urgency: string
   subject?: string | null
-  notes?: string | null
+  // `notes` is a free-text field on the storefront create payload, but the
+  // admin GET responses return the RfqNote relation under the same key.
+  notes?: string | RfqNote[] | null
   source?: string | null
   consent?: boolean
   status: string
@@ -229,7 +239,7 @@ export interface Rfq {
   assignedTo?: string | null
   assignee?: { id: string; name: string; email?: string | null } | null
   items?: Array<{ id: string; productName: string; quantity?: number | null; unit?: string | null; notes?: string | null }> | null
-  rfqNotes?: Array<{ id: string; note: string; isInternal: boolean; createdAt: string; author?: { id?: string; name: string; email?: string | null } | null }> | null
+  rfqNotes?: RfqNote[] | null
   internalNotes?: string | null
   responseDeadline?: string | null
   firstResponseAt?: string | null
@@ -267,6 +277,8 @@ export interface Offer {
   updatedAt?: string | null
   product?: { name: string; sku: string; regularPrice: number } | null
   customer?: { id: string; name: string; company?: string | null; country?: string | null } | null
+  // Relation returned by offerAdminService (nesting lives here, not at the top level).
+  rfq?: { id: string; rfqNumber: string } | null
   items?: OfferItem[]
   rfqNumber?: string | null
   rfqId?: string | null

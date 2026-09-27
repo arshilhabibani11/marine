@@ -70,7 +70,8 @@ function mapApiOffer(o: ApiOffer): Offer {
   return {
     id: o.id,
     number: o.offerNumber || o.id,
-    rfqNumber: o.rfqNumber || o.rfqId || '',
+    // offerAdminService nests the RFQ relation; rfqNumber/rfqId are legacy fallbacks.
+    rfqNumber: o.rfq?.rfqNumber || o.rfqNumber || o.rfqId || '',
     customerName: o.customer?.name || '',
     customerEmail: o.customerEmail || '',
     customerCompany: o.customer?.company || '',

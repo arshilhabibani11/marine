@@ -119,7 +119,10 @@ function mapApiRfq(r: ApiRfq): RFQ {
         notes: '',
       }]
 
-  const notes: RFQNote[] = (r.rfqNotes || []).map((n) => ({
+  // rfqInclude returns the note relation under `notes`; `rfqNotes` is only a
+  // fallback for older payloads. Never treat a plain string as the array.
+  const rawNotes = Array.isArray(r.notes) ? r.notes : (r.rfqNotes || [])
+  const notes: RFQNote[] = rawNotes.map((n) => ({
     id: n.id,
     note: n.note,
     isInternal: n.isInternal,
