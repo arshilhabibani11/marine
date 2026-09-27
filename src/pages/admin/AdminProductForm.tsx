@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Save, Eye, ExternalLink, ArrowLeft, Loader2, CheckCircle } from 'lucide-react'
+import { Save, Eye, ExternalLink, ArrowLeft, Loader2, CheckCircle, FileText } from 'lucide-react'
 import { useProductForm, TABS } from '../../hooks/useProductForm'
 import { ProductPreviewModal } from '../../components/admin/ProductPreviewModal'
 import { ProductFormBasics } from '../../components/admin/ProductFormBasics'
@@ -14,6 +14,10 @@ import { ProductFormNotes } from '../../components/admin/ProductFormNotes'
 export default function AdminProductForm() {
   const hook = useProductForm()
   const [showPreview, setShowPreview] = useState(false)
+
+  const isPublished = hook.form.status === 'published'
+  const saveDisabled = hook.saving || (!hook.isValid && hook.attempted)
+  const saveLabel = hook.saving ? 'Saving...' : hook.saved ? 'Saved!' : isPublished ? 'Save & Publish' : 'Save as Draft'
 
   if (hook.loadingProduct) {
     return (
@@ -70,8 +74,8 @@ export default function AdminProductForm() {
             </span>
           )}
           <button
-            onClick={hook.handleSave}
-            disabled={hook.saving || (!hook.isValid && hook.attempted)}
+            onClick={() => hook.handleSave()}
+            disabled={saveDisabled}
             className={`inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-extrabold transition-all ${
               hook.saved
                 ? 'bg-[var(--success)] text-[var(--btn-success-text)]'
@@ -81,7 +85,7 @@ export default function AdminProductForm() {
             }`}
           >
             {hook.saving ? <Loader2 size={14} className="animate-spin" /> : hook.saved ? <CheckCircle size={14} /> : <Save size={14} />}
-            {hook.saving ? 'Saving...' : hook.saved ? 'Saved!' : 'Save Product'}
+            {saveLabel}
           </button>
         </div>
       </div>
@@ -194,6 +198,49 @@ export default function AdminProductForm() {
                 labelClass={hook.labelClass}
               />
             )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Sticky final submit ──
+          Kept at the bottom of the editor so the publish action is always in
+          reach, even scrolled deep inside a long tab. */}
+      <div className="sticky bottom-0 z-20 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 shadow-[0_-8px_24px_rgba(0,0,0,0.10)]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className={`admin-badge ${isPublished ? 'admin-badge-published' : 'admin-badge-draft'} capitalize`}>
+              {hook.form.status || 'draft'}
+            </span>
+            <span className="text-[var(--text-muted)]">
+              {isPublished
+                ? 'Saving publishes this product to the storefront immediately.'
+                : 'Not visible on the storefront until published.'}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => hook.handleSave('draft')}
+              disabled={saveDisabled}
+              className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-2.5 text-xs font-bold text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-blue)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <FileText size={14} /> Save as Draft
+            </button>
+            <button
+              type="button"
+              onClick={() => hook.handleSave('published')}
+              disabled={saveDisabled}
+              className={`inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-extrabold transition-all ${
+                hook.saved
+                  ? 'bg-[var(--success)] text-[var(--btn-success-text)]'
+                  : !hook.isValid && hook.attempted
+                    ? 'bg-[var(--text-muted)] text-[var(--btn-blue-text)] cursor-not-allowed opacity-60'
+                    : 'bg-[var(--accent-gold)] text-[var(--btn-blue-text)] hover:brightness-95 hover:-translate-y-0.5'
+              }`}
+            >
+              {hook.saving ? <Loader2 size={14} className="animate-spin" /> : hook.saved ? <CheckCircle size={14} /> : <Save size={14} />}
+              {hook.saving ? 'Publishing...' : hook.saved ? 'Published!' : 'Publish'}
+            </button>
           </div>
         </div>
       </div>

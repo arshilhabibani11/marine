@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import {
-  ArrowUpDown, Eye, Pencil, Trash2, Package, ImageOff, Tag,
+  ArrowUpDown, Eye, EyeOff, Globe, Pencil, Trash2, Package, ImageOff, Tag,
   CheckSquare, Square, X, Loader2, Copy, BadgePercent,
 } from 'lucide-react'
 import { OptimizedImage } from '../ui/OptimizedImage'
@@ -41,6 +41,11 @@ interface AdminProductTableProps {
   onOffer: (id: string) => void
   onDeleteRequest: (id: string) => void
   onClearFilters: () => void
+
+  // Inline visibility toggle — publishing straight from the row avoids the
+  // select-then-bulk-action detour.
+  onTogglePublish: (id: string, status: string) => void
+  publishingId: string | null
 
   // Bulk actions
   onBulkAction: (action: string) => void
@@ -97,6 +102,7 @@ export function AdminProductTable({
   selectedIds, onToggleSelect, onToggleSelectAll,
   onSort,
   onDuplicate, duplicating, onOffer, onDeleteRequest, onClearFilters,
+  onTogglePublish, publishingId,
   onBulkAction, onClearSelection,
   page, totalPages, totalItems, onPageChange,
 }: AdminProductTableProps) {
@@ -238,6 +244,20 @@ export function AdminProductTable({
                     <td><span className={`admin-badge ${getAvailabilityBadge(product.availability)}`}>{product.availability.replace(/-/g, ' ')}</span></td>
                     <td>
                       <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => onTogglePublish(product.id, product.status)}
+                          disabled={publishingId === product.id}
+                          className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors disabled:cursor-wait ${
+                            product.status === 'published'
+                              ? 'text-[var(--text-muted)] hover:text-[var(--accent-gold)] hover:bg-[var(--gold-muted)]'
+                              : 'text-[var(--accent-teal)] hover:bg-[var(--accent-teal)]/10'
+                          }`}
+                          title={product.status === 'published' ? 'Unpublish (hide from storefront)' : 'Publish to storefront'}
+                        >
+                          {publishingId === product.id
+                            ? <Loader2 size={12} className="animate-spin" />
+                            : product.status === 'published' ? <EyeOff size={12} /> : <Globe size={12} />}
+                        </button>
                         <Link
                           to={`/admin/products/${product.id}/edit`}
                           className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--accent-gold)] hover:bg-[var(--gold-muted)] transition-colors"

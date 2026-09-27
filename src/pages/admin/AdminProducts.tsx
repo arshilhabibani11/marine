@@ -306,6 +306,7 @@ export default function AdminProducts() {
   }
 
   const [duplicating, setDuplicating] = useState<string | null>(null)
+  const [publishingId, setPublishingId] = useState<string | null>(null)
   const [showImport, setShowImport] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<{ created: number; skipped: number; errors: string[] } | null>(null)
@@ -323,6 +324,21 @@ export default function AdminProducts() {
       toast(err instanceof Error ? err.message : 'Failed to duplicate product', 'error')
     } finally {
       setDuplicating(null)
+    }
+  }
+
+  // Publish/unpublish a single product straight from the listing row.
+  const handleTogglePublish = async (productId: string, status: string) => {
+    const action = status === 'published' ? 'unpublish' : 'publish'
+    setPublishingId(productId)
+    try {
+      await admin.products.bulk([productId], action)
+      toast(action === 'publish' ? 'Product published to storefront' : 'Product hidden from storefront', 'success')
+      fetchProducts()
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Failed to update visibility', 'error')
+    } finally {
+      setPublishingId(null)
     }
   }
 
@@ -495,6 +511,8 @@ export default function AdminProducts() {
         onDuplicate={handleDuplicate}
         duplicating={duplicating}
         onOffer={handleOpenOffer}
+        onTogglePublish={handleTogglePublish}
+        publishingId={publishingId}
         onDeleteRequest={setDeleteTarget}
         onClearFilters={clearFilters}
         onBulkAction={handleBulkAction}

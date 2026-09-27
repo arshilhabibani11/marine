@@ -387,7 +387,9 @@ export function useProductForm() {
 
   // ── Save ──
 
-  const handleSave = useCallback(async () => {
+  // `statusOverride` lets the sticky action bar publish/save-as-draft in one
+  // click without waiting for the Visibility dropdown state to settle.
+  const handleSave = useCallback(async (statusOverride?: string) => {
     const validationErrors = validate()
     setErrors(validationErrors)
     setAttempted(true)
@@ -395,6 +397,8 @@ export function useProductForm() {
       setActiveTab('basics')
       return
     }
+
+    const finalStatus = statusOverride || form.status
 
     setSaving(true)
     try {
@@ -428,7 +432,7 @@ export function useProductForm() {
         brandId: brandId || null,
         categoryId: form.category || null,
         industryIds: form.industries,
-        status: form.status,
+        status: finalStatus,
         condition: form.condition,
         availability: form.availability,
         shortDescription: form.shortDescription,
@@ -475,6 +479,10 @@ export function useProductForm() {
       } else {
         await admin.products.create(payload)
       }
+
+      // Reflect the intent in the form so the Visibility dropdown and the
+      // header label agree with what was just stored.
+      if (finalStatus !== form.status) updateField('status', finalStatus)
 
       isDirtyRef.current = false
       setSaved(true)
