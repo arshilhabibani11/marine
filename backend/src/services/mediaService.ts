@@ -62,11 +62,14 @@ export async function listMediaAssets(params: { search?: string; page?: number; 
     ]
   }
 
-  const [assets, total] = await Promise.all([
+  // Total stored bytes across ALL assets matching the filter, so the library
+  // header shows a real total rather than only the current page's size.
+  const [assets, total, sizeAgg] = await Promise.all([
     prisma.mediaAsset.findMany({ where, orderBy: { createdAt: 'desc' }, skip, take: limit }),
     prisma.mediaAsset.count({ where }),
+    prisma.mediaAsset.aggregate({ _sum: { fileSize: true }, where }),
   ])
-  return { assets, pagination: paginationResponse(total, page, limit) }
+  return { assets, totalSize: sizeAgg._sum.fileSize || 0, pagination: paginationResponse(total, page, limit) }
 }
 
 export async function getMediaUsage(assetId: string) {

@@ -13,7 +13,7 @@ interface OrderFiltersProps {
   setDateTo: (v: string) => void
   setPage: (v: number) => void
   ordersCount: number
-  statusCounts: Map<string, number>
+  statusCounts: Record<string, number>
 }
 
 export function OrderFilters({
@@ -50,7 +50,7 @@ export function OrderFilters({
                 : 'bg-[var(--surface)] border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent-gold)]'
             }`}
           >
-            {statusConfig[status].label} ({statusCounts.get(status) || 0})
+            {statusConfig[status].label} ({statusCounts[status] || 0})
           </button>
         ))}
       </div>

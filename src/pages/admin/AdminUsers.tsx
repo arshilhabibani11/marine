@@ -42,7 +42,9 @@ function mapApiUser(u: ApiAdminUser): AdminUser {
     email: u.email || '',
     role: (u.role || 'viewer') as UserRole,
     avatar: initials,
-    lastLogin: u.lastLoginAt || new Date().toISOString(),
+    // Empty string means the account has never signed in; the formatters below
+    // render that as "Never" instead of pretending it happened today.
+    lastLogin: u.lastLoginAt || '',
     createdAt: u.createdAt || new Date().toISOString(),
     active: u.isActive ?? true,
   }
@@ -98,8 +100,9 @@ export default function AdminUsers() {
     return users.filter((u) => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.role.toLowerCase().includes(q))
   }, [users, search])
 
-  const formatDate = (d: string) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  const formatDate = (d: string) => (d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—')
   const formatRelative = (d: string) => {
+    if (!d) return 'Never'
     const diff = Math.floor((Date.now() - new Date(d).getTime()) / 86400000)
     if (diff === 0) return 'Today'
     if (diff === 1) return 'Yesterday'

@@ -1,10 +1,14 @@
 export type CustomerStatus = 'active' | 'inactive' | 'vip' | 'new'
 
+export type CustomerOrderStatus =
+  | 'pending' | 'confirmed' | 'paid' | 'processing' | 'packed'
+  | 'shipped' | 'delivered' | 'cancelled'
+
 export interface CustomerOrder {
   id: string
   date: string
   total: number
-  status: 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled'
+  status: CustomerOrderStatus
   itemCount: number
 }
 

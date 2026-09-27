@@ -95,7 +95,7 @@ export const admin = {
   orders: {
     list: (params?: Record<string, string>) => {
       const qs = params ? '?' + new URLSearchParams(params).toString() : ''
-      return api.get<{ orders: ApiOrder[]; pagination: Pagination }>(`/admin/orders${qs}`, { auth: 'admin' })
+      return api.get<{ orders: ApiOrder[]; statusCounts?: Record<string, number>; pagination: Pagination }>(`/admin/orders${qs}`, { auth: 'admin' })
     },
     get: (id: string) => api.get<{ order: ApiOrder }>(`/admin/orders/${id}`, { auth: 'admin' }),
     updateStatus: (id: string, status: string, note?: string) =>
@@ -162,13 +162,22 @@ export const admin = {
   customers: {
     list: (params?: Record<string, string>) => {
       const qs = params ? '?' + new URLSearchParams(params).toString() : ''
-      return api.get<{ customers: ApiCustomer[]; pagination: Pagination }>(`/admin/customers${qs}`, { auth: 'admin' })
+      return api.get<{
+        customers: ApiCustomer[]
+        statusCounts?: Record<string, number>
+        stats?: { totalRevenue: number; avgLifetimeValue: number; vipCount: number; activeCount: number }
+        pagination: Pagination
+      }>(`/admin/customers${qs}`, { auth: 'admin' })
     },
     get: (id: string) => api.get<{ customer: ApiCustomer }>(`/admin/customers/${id}`, { auth: 'admin' }),
     create: (data: { name: string; email: string; password: string; phone?: string; company?: string; country?: string; city?: string }) =>
       api.post<{ customer: ApiCustomer }>('/admin/customers', data, { auth: 'admin' }),
+    update: (id: string, data: Partial<ApiCustomer>) =>
+      api.patch<{ customer: ApiCustomer }>(`/admin/customers/${id}`, data, { auth: 'admin' }),
     updateStatus: (id: string, status: string) =>
       api.patch<{ customer: ApiCustomer }>(`/admin/customers/${id}/status`, { status }, { auth: 'admin' }),
+    addNote: (id: string, notes: string) =>
+      api.post<{ customer: { id: string; internalNotes: string | null } }>(`/admin/customers/${id}/notes`, { notes }, { auth: 'admin' }),
   },
 
   // Messages
@@ -196,7 +205,7 @@ export const admin = {
   media: {
     list: (params?: Record<string, string>) => {
       const qs = params ? '?' + new URLSearchParams(params).toString() : ''
-      return api.get<{ assets: ApiMediaAsset[]; pagination: Pagination }>(`/admin/media${qs}`, { auth: 'admin' })
+      return api.get<{ assets: ApiMediaAsset[]; totalSize?: number; pagination: Pagination }>(`/admin/media${qs}`, { auth: 'admin' })
     },
     usage: (id: string) => api.get<{ usage: { productId: string; productName: string; productSku: string }[] }>(`/admin/media/${id}/usage`, { auth: 'admin' }),
     delete: (id: string) => api.del<{ message: string }>(`/admin/media/${id}`, { auth: 'admin' }),

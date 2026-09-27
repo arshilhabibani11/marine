@@ -37,15 +37,26 @@ export async function listOrders(params: OrderFilters) {
     if (params.to) where.createdAt.lte = new Date(`${params.to}T23:59:59.999Z`)
   }
 
-  const [orders, total] = await Promise.all([
+  // Per-status tallies for the admin filter tabs. Computed against the same
+  // filters as the list but WITHOUT the status filter, so each tab shows its
+  // true total under the current search/date constraints instead of only the
+  // counts present on the current page.
+  const statusWhere = { ...where }
+  delete statusWhere.status
+
+  const [orders, total, grouped] = await Promise.all([
     prisma.order.findMany({
       where, include: orderInclude,
       orderBy: { createdAt: 'desc' }, skip, take: limit,
     }),
     prisma.order.count({ where }),
+    prisma.order.groupBy({ by: ['status'], where: statusWhere, _count: { _all: true } }),
   ])
 
-  return { orders, pagination: paginationResponse(total, page, limit) }
+  const statusCounts: Record<string, number> = {}
+  for (const g of grouped) statusCounts[g.status] = g._count._all
+
+  return { orders, statusCounts, pagination: paginationResponse(total, page, limit) }
 }
 
 export async function getOrder(id: string) {

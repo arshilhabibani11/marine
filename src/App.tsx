@@ -38,6 +38,8 @@ const TermsOfService = lazy(() => import('./pages/TermsOfService'))
 const RefundPolicy = lazy(() => import('./pages/RefundPolicy'))
 import { CookieConsent } from './components/CookieConsent'
 import { StoreAnalytics } from './components/analytics/StoreAnalytics'
+import { useStoreSettings } from './hooks/useStoreSettings'
+import Maintenance from './pages/Maintenance'
 import { PayPalProvider } from './components/PayPalProvider'
 import { WhatsAppFloat } from './components/WhatsAppFloat'
 import { PageSkeleton } from './components/ui/Skeleton'
@@ -81,6 +83,8 @@ function LocaleLayout() {
   const location = useLocation()
   const setLanguage = useStore((s) => s.setLanguage)
   const language = useStore((s) => s.language)
+  const adminUser = useStore((s) => s.adminUser)
+  const settings = useStoreSettings()
 
   const isValid = locale !== undefined && VALID_LOCALES.includes(locale as Language)
 
@@ -96,6 +100,12 @@ function LocaleLayout() {
   // survive the redirect. All hooks must be called before any early returns.
   if (!isValid) {
     return <Navigate to={`/en${location.pathname}${location.search}`} replace />
+  }
+
+  // Maintenance mode: gate the storefront for everyone except signed-in admins.
+  // Admin routes live outside this layout, so the panel stays reachable.
+  if (settings.maintenanceMode && !adminUser) {
+    return <Maintenance />
   }
 
   return (

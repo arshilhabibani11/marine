@@ -21,6 +21,7 @@ export default function AdminOrders() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [page, setPage] = useState(1)
   const [serverTotal, setServerTotal] = useState(0)
+  const [serverStatusCounts, setServerStatusCounts] = useState<Record<string, number>>({})
   const [showTrackingModal, setShowTrackingModal] = useState(false)
 
   const fetchOrders = useCallback(async () => {
@@ -36,6 +37,7 @@ export default function AdminOrders() {
       const res = await admin.orders.list(params)
       setOrders((res.orders || []).map(mapApiOrder))
       setServerTotal(res.pagination?.total ?? 0)
+      setServerStatusCounts(res.statusCounts || {})
     } catch (err: unknown) {
       console.error('Failed to load orders:', err)
       toast('Failed to load orders', 'error')
@@ -76,11 +78,12 @@ export default function AdminOrders() {
   const totalPages = Math.max(1, Math.ceil(serverTotal / ITEMS_PER_PAGE))
   const paginatedOrders = filteredOrders.slice(0, ITEMS_PER_PAGE)
 
-  const statusCounts = useMemo(() => {
-    const counts = new Map<string, number>()
-    orders.forEach((o) => counts.set(o.status, (counts.get(o.status) || 0) + 1))
-    return counts
-  }, [orders])
+  // "All" = every order matching the current search/date filters (not just the
+  // page). The per-status tabs come straight from the server too.
+  const allOrdersCount = useMemo(
+    () => Object.values(serverStatusCounts).reduce((sum, n) => sum + n, 0),
+    [serverStatusCounts]
+  )
 
   const [exporting, setExporting] = useState(false)
 
@@ -105,7 +108,7 @@ export default function AdminOrders() {
     if (next.length === 0) return
     try {
       await admin.orders.updateStatus(orderId, next[0].status)
-      toast(`Order ${orderId} → ${next[0].label}`, 'success')
+      toast(`Order ${order.orderNumber} → ${next[0].label}`, 'success')
       fetchOrders()
     } catch (err: unknown) {
       toast(err instanceof Error ? err.message : 'Failed to update status', 'error')
@@ -113,9 +116,10 @@ export default function AdminOrders() {
   }
 
   const handleCancelOrder = async (orderId: string) => {
+    const order = orders.find((o) => o.id === orderId)
     try {
       await admin.orders.cancel(orderId, 'Cancelled by admin')
-      toast(`Order ${orderId} cancelled`, 'success')
+      toast(`Order ${order?.orderNumber || orderId} cancelled`, 'success')
       fetchOrders()
     } catch (err: unknown) {
       toast(err instanceof Error ? err.message : 'Failed to cancel order', 'error')
@@ -154,8 +158,8 @@ export default function AdminOrders() {
         dateTo={dateTo}
         setDateTo={setDateTo}
         setPage={setPage}
-        ordersCount={orders.length}
-        statusCounts={statusCounts}
+        ordersCount={allOrdersCount}
+        statusCounts={serverStatusCounts}
       />
 
       <OrderTable

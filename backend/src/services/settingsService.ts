@@ -24,6 +24,8 @@ export async function getPublicSettings() {
     'site.seoTitle', 'site.seoDescription', 'site.whatsappNumber',
     'site.googleAnalyticsId',
     'site.rfqEmail', 'site.emergencyEmail',
+    // Storefront reads this to render the maintenance page for non-admins.
+    'site.maintenanceMode',
     'checkout.shippingCost', 'checkout.taxRate', 'checkout.freeShippingThreshold',
     // Admin-configured shipping zones and payment methods — consumed by checkout.
     'store.shippingZones', 'store.paymentMethods',

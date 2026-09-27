@@ -51,6 +51,8 @@ export default function AdminCustomers() {
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerType | null>(null)
   const [page, setPage] = useState(1)
   const [serverTotal, setServerTotal] = useState(0)
+  const [serverStatusCounts, setServerStatusCounts] = useState<Record<string, number>>({})
+  const [serverStats, setServerStats] = useState({ totalRevenue: 0, avgLifetimeValue: 0, vipCount: 0, activeCount: 0 })
 
   const fetchCustomers = useCallback(async () => {
     setLoading(true)
@@ -63,6 +65,8 @@ export default function AdminCustomers() {
       const res = await admin.customers.list(params)
       setCustomers((res.customers || []).map(mapApiCustomer))
       setServerTotal(res.pagination?.total ?? 0)
+      setServerStatusCounts(res.statusCounts || {})
+      if (res.stats) setServerStats(res.stats)
     } catch (err: unknown) {
       console.error('Failed to load customers:', err)
       toast('Failed to load customers', 'error')
@@ -120,18 +124,9 @@ export default function AdminCustomers() {
   const totalPages = Math.max(1, Math.ceil(serverTotal / ITEMS_PER_PAGE))
   const paginatedCustomers = filteredCustomers.slice(0, ITEMS_PER_PAGE)
 
-  const statusCounts = useMemo(() => {
-    const counts = new Map<string, number>()
-    customers.forEach((c) => counts.set(c.status, (counts.get(c.status) || 0) + 1))
-    return counts
-  }, [customers])
-
-  const stats = useMemo(() => ({
-    totalRevenue: customers.reduce((s, c) => s + c.totalSpent, 0),
-    avgLifetimeValue: customers.length ? Math.round(customers.reduce((s, c) => s + c.totalSpent, 0) / customers.length) : 0,
-    vipCount: customers.filter((c) => c.status === 'vip').length,
-    activeCount: customers.filter((c) => c.status === 'active' || c.status === 'vip').length,
-  }), [customers])
+  // Totals come from the server so they cover every matching customer, not
+  // just the current page.
+  const stats = serverStats
 
   return (
     <div className="space-y-5">
@@ -171,12 +166,12 @@ export default function AdminCustomers() {
       <div className="flex gap-2 overflow-x-auto pb-1">
         <button onClick={() => { setStatusFilter(''); setPage(1) }}
           className={`shrink-0 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${statusFilter === '' ? 'bg-[var(--accent-gold)] text-[var(--btn-blue-text)] shadow-[0_4px_12px_rgba(232,170,36,0.2)]' : 'bg-[var(--surface)] border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent-gold)]'}`}>
-          All ({customers.length})
+          All ({serverTotal})
         </button>
         {(Object.keys(statusConfig) as CustomerStatus[]).map((status) => (
           <button key={status} onClick={() => { setStatusFilter(status === statusFilter ? '' : status); setPage(1) }}
             className={`shrink-0 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${statusFilter === status ? `${statusConfig[status].bg} ${statusConfig[status].color} border border-current/20` : 'bg-[var(--surface)] border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent-gold)]'}`}>
-            {statusConfig[status].label} ({statusCounts.get(status) || 0})
+            {statusConfig[status].label} ({serverStatusCounts[status] || 0})
           </button>
         ))}
       </div>
@@ -266,12 +261,23 @@ export default function AdminCustomers() {
       {/* Customer Detail Slide-over */}
       {selectedCustomer && (
         <CustomerDetailSlideover
+          key={selectedCustomer.id}
           customer={selectedCustomer}
           onClose={() => setSelectedCustomer(null)}
           onStatusChange={async (id, status) => {
             setCustomers((prev) => prev.map((c) => c.id === id ? { ...c, status } : c))
             setSelectedCustomer({ ...selectedCustomer, status })
             await admin.customers.updateStatus(id, status)
+          }}
+          onSaveNotes={async (id, notes) => {
+            await admin.customers.addNote(id, notes)
+            setCustomers((prev) => prev.map((c) => c.id === id ? { ...c, notes } : c))
+            setSelectedCustomer((prev) => (prev && prev.id === id ? { ...prev, notes } : prev))
+          }}
+          onSaveDetails={async (id, data) => {
+            await admin.customers.update(id, data)
+            setCustomers((prev) => prev.map((c) => c.id === id ? { ...c, ...data } : c))
+            setSelectedCustomer((prev) => (prev && prev.id === id ? { ...prev, ...data } : prev))
           }}
           onToast={toast}
           onCustomersUpdate={(updater) => setCustomers(updater)}

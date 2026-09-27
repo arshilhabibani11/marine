@@ -82,6 +82,7 @@ export default function AdminMedia() {
   const [deleting, setDeleting] = useState(false)
   const [page, setPage] = useState(1)
   const [serverTotal, setServerTotal] = useState(0)
+  const [serverTotalSize, setServerTotalSize] = useState(0)
   const [fileInputEl, setFileInputEl] = useState<HTMLInputElement | null>(null)
   const [usageMap, setUsageMap] = useState<Map<string, { productId: string; productName: string; productSku: string }[]>>(new Map())
 
@@ -96,6 +97,7 @@ export default function AdminMedia() {
       const res = await admin.media.list(params)
       setMediaList((res.assets || []).map(mapApiAsset))
       setServerTotal(res.pagination?.total ?? 0)
+      setServerTotalSize(res.totalSize ?? 0)
     } catch (err: unknown) {
       console.error('Failed to load media:', err)
       toast('Failed to load media assets', 'error')
@@ -139,7 +141,8 @@ export default function AdminMedia() {
   const paginatedMedia = filteredMedia.slice(0, ITEMS_PER_PAGE)
 
   const uniqueLabels = useMemo(() => Array.from(new Set(mediaList.map((m) => m.label))).sort(), [mediaList])
-  const totalSize = useMemo(() => mediaList.reduce((s, m) => s + m.fileSize, 0), [mediaList])
+  // Total bytes across the whole library (server aggregate), not just this page.
+  const totalSize = serverTotalSize
 
   // Fetch usage for a specific media asset
   const fetchUsage = useCallback(async (assetId: string) => {

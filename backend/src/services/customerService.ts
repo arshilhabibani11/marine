@@ -22,7 +22,13 @@ export async function listCustomers(params: { status?: string; search?: string; 
     ]
   }
 
-  const [customers, total] = await Promise.all([
+  // Per-status tallies for the admin filter tabs. Same filters minus `status`
+  // so each tab reflects the true total under the current search, not just the
+  // current page.
+  const statusWhere = { ...where }
+  delete statusWhere.status
+
+  const [customers, total, grouped, revenueAgg] = await Promise.all([
     prisma.customer.findMany({
       where,
       include: { _count: { select: { orders: true, rfqs: true, offers: true } } },
@@ -30,7 +36,22 @@ export async function listCustomers(params: { status?: string; search?: string; 
       skip, take: limit,
     }),
     prisma.customer.count({ where }),
+    prisma.customer.groupBy({ by: ['status'], where: statusWhere, _count: { _all: true } }),
+    // Lifetime spend across every customer matching the current filters (minus
+    // the status filter), so the header cards are totals and not page sums.
+    prisma.order.aggregate({ _sum: { total: true }, where: { customer: { is: statusWhere } } }),
   ])
+
+  const statusCounts: Record<string, number> = {}
+  for (const g of grouped) statusCounts[g.status] = g._count._all
+  const customerTotal = Object.values(statusCounts).reduce((sum, n) => sum + n, 0)
+  const totalRevenue = Number(revenueAgg._sum.total ?? 0)
+  const stats = {
+    totalRevenue,
+    avgLifetimeValue: customerTotal ? Math.round(totalRevenue / customerTotal) : 0,
+    vipCount: statusCounts.vip || 0,
+    activeCount: (statusCounts.active || 0) + (statusCounts.vip || 0),
+  }
 
   // Aggregate order value + most-recent order per customer so the admin list
   // can show real lifetime spend instead of a hardcoded 0.
@@ -53,7 +74,7 @@ export async function listCustomers(params: { status?: string; search?: string; 
     }
   })
 
-  return { customers: enriched, pagination: paginationResponse(total, page, limit) }
+  return { customers: enriched, statusCounts, stats, pagination: paginationResponse(total, page, limit) }
 }
 
 export async function getCustomer(id: string) {

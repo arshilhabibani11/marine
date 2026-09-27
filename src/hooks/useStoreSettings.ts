@@ -20,6 +20,7 @@ interface StoreSettings {
   emergencyEmail: string
   phoneNumber: string
   googleAnalyticsId: string
+  maintenanceMode: boolean
   shippingZones: ShippingZone[]
   paymentMethods: PaymentMethodSetting[]
 }
@@ -33,6 +34,7 @@ const DEFAULTS: StoreSettings = {
   emergencyEmail: 'sales@alkatraders.co',
   phoneNumber: '+918799095041',
   googleAnalyticsId: '',
+  maintenanceMode: false,
   shippingZones: [],
   paymentMethods: [],
 }
@@ -74,6 +76,7 @@ async function fetchSettingsAndNotify(): Promise<StoreSettings> {
         emergencyEmail: String(s['site.emergencyEmail'] || DEFAULTS.emergencyEmail),
         phoneNumber: String(s['site.phoneNumber'] || DEFAULTS.phoneNumber),
         googleAnalyticsId: String(s['site.googleAnalyticsId'] || DEFAULTS.googleAnalyticsId),
+        maintenanceMode: s['site.maintenanceMode'] === true || s['site.maintenanceMode'] === 'true',
         shippingZones: parseShippingZones(s['store.shippingZones']),
         paymentMethods: parsePaymentMethods(s['store.paymentMethods']),
       }
