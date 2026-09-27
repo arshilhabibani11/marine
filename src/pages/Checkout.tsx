@@ -196,7 +196,7 @@ export default function Checkout() {
         : null,
     })
     return serverOrderId
-  }, [cart, shipping, paymentMethod, subtotal, tax, total])
+  }, [cart, user, shipping, paymentMethod, subtotal, tax, total])
 
   const handlePlaceOrder = async () => {
     setOrderLoading(true)

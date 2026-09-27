@@ -14,7 +14,13 @@ export default tseslint.config(
       ecmaVersion: 2023,
       globals: globals.browser,
       parserOptions: {
-        projectService: true,
+        projectService: {
+          // Playwright config + e2e specs are deliberately outside the app's
+          // tsconfigs (they target the live site and use browser globals).
+          // Lint them against default compiler options instead of failing with
+          // "not found by the project service" parse errors.
+          allowDefaultProject: ['e2e/*.ts', 'playwright.config.ts'],
+        },
         tsconfigRootDir: import.meta.dirname,
       },
     },

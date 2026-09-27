@@ -18,6 +18,7 @@ import {
   Loader2,
   StickyNote,
   Package,
+  ShoppingCart,
 } from 'lucide-react'
 import { admin } from '../../lib/api'
 import { useToast } from '../../components/admin/toast-context'
@@ -172,6 +173,10 @@ export default function AdminRFQs() {
   const [offerTarget, setOfferTarget] = useState<RFQ | null>(null)
   const [offerPrice, setOfferPrice] = useState('')
   const [creatingOffer, setCreatingOffer] = useState(false)
+  const [orderTarget, setOrderTarget] = useState<RFQ | null>(null)
+  const [orderUnitPrice, setOrderUnitPrice] = useState('')
+  const [orderTotal, setOrderTotal] = useState('')
+  const [creatingOrder, setCreatingOrder] = useState(false)
   const [respondTarget, setRespondTarget] = useState<RFQ | null>(null)
   const [respondMessage, setRespondMessage] = useState('')
   const [sendingResponse, setSendingResponse] = useState(false)
@@ -265,6 +270,34 @@ export default function AdminRFQs() {
       toast(err instanceof Error ? err.message : 'Failed to create offer', 'error')
     } finally {
       setCreatingOffer(false)
+    }
+  }
+
+  const handleConvertToOrder = async () => {
+    if (!orderTarget) return
+    const unitPrice = Number(orderUnitPrice)
+    const total = Number(orderTotal)
+    if (
+      orderUnitPrice.trim() === '' || orderTotal.trim() === '' ||
+      !Number.isFinite(unitPrice) || unitPrice < 0 ||
+      !Number.isFinite(total) || total < 0
+    ) {
+      toast('Enter a valid unit price and order total', 'error')
+      return
+    }
+    setCreatingOrder(true)
+    try {
+      await admin.rfqs.convertToOrder(orderTarget.id, total, unitPrice)
+      toast(`Order created from ${orderTarget.number}`, 'success')
+      setOrderTarget(null)
+      setOrderUnitPrice('')
+      setOrderTotal('')
+      fetchRfqs()
+      navigate('/admin/orders')
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Failed to create order', 'error')
+    } finally {
+      setCreatingOrder(false)
     }
   }
 
@@ -477,6 +510,9 @@ export default function AdminRFQs() {
                     <button onClick={() => { setOfferTarget(selectedRFQ); setOfferPrice('') }} className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--accent-gold)]/20 bg-[var(--accent-gold)]/10 px-3 py-2 text-xs font-bold text-[var(--accent-gold)] hover:bg-[var(--accent-gold)]/20 transition-colors">
                       <HandCoins size={12} /> Create Offer
                     </button>
+                    <button onClick={() => { setOrderTarget(selectedRFQ); setOrderUnitPrice(''); setOrderTotal('') }} className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--success)]/20 bg-[var(--success)]/10 px-3 py-2 text-xs font-bold text-[var(--success)] hover:bg-[var(--success)]/20 transition-colors">
+                      <ShoppingCart size={12} /> Convert to Order
+                    </button>
                   </div>
                   <div>
                     <label className="text-[0.625rem] font-bold text-[var(--text-muted)] mb-1 block">Assign to</label>
@@ -593,6 +629,60 @@ export default function AdminRFQs() {
               <button onClick={handleCreateOffer} disabled={creatingOffer} className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--accent-gold)] px-4 py-2.5 text-xs font-extrabold text-[var(--btn-blue-text)] transition-all hover:brightness-95 disabled:opacity-50">
                 {creatingOffer ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
                 {creatingOffer ? 'Creating...' : 'Create Offer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Convert to Order Modal */}
+      {orderTarget && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setOrderTarget(null)}>
+          <div className="w-full max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-display text-base font-bold text-[var(--text-primary)]">Convert to Order</h3>
+              <button onClick={() => setOrderTarget(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)]"><X size={16} /></button>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+              <ShoppingCart size={13} className="text-[var(--success)]" />
+              <span>From {orderTarget.number} · {orderTarget.customerName}</span>
+            </div>
+            <p className="text-[0.625rem] text-[var(--text-muted)]">
+              Creates a pending bank-transfer order from this RFQ and marks the RFQ as won.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-[var(--text-secondary)] mb-1.5">Unit Price (USD)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={orderUnitPrice}
+                  onChange={(e) => setOrderUnitPrice(e.target.value)}
+                  placeholder="0.00"
+                  aria-label="Unit price"
+                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] py-2.5 px-4 text-sm font-mono text-[var(--text-primary)] focus:border-[var(--accent-gold)]"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-[var(--text-secondary)] mb-1.5">Order Total (USD)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={orderTotal}
+                  onChange={(e) => setOrderTotal(e.target.value)}
+                  placeholder="0.00"
+                  aria-label="Order total"
+                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] py-2.5 px-4 text-sm font-mono text-[var(--text-primary)] focus:border-[var(--accent-gold)]"
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button onClick={() => setOrderTarget(null)} className="rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-2.5 text-xs font-bold text-[var(--text-secondary)] hover:border-[var(--text-muted)] transition-colors">Cancel</button>
+              <button onClick={handleConvertToOrder} disabled={creatingOrder} className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--success)] px-4 py-2.5 text-xs font-extrabold text-white transition-all hover:brightness-95 disabled:opacity-50">
+                {creatingOrder ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+                {creatingOrder ? 'Creating...' : 'Create Order'}
               </button>
             </div>
           </div>

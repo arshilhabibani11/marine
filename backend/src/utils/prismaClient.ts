@@ -30,10 +30,6 @@ function withConnectTimeouts(rawUrl: string): string {
   }
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
 /** Host:port only — never the user or password. Safe to log. */
 function parseHost(rawUrl: string | undefined): string {
   if (!rawUrl) return 'unset'
@@ -76,12 +72,22 @@ export function getRedactedDbHost(): string {
  *
  * Every query is wrapped in a cold-start retry so a brief database blip (cold
  * start, pool ramp-up, transient network reset) does not surface as a 5xx to
- * the caller. Non-retryable errors (SQL errors, unique violations, validation
- * failures) are never retried.
+ * the caller. Only connection-level cold-start failures are retried — SQL
+ * errors, unique violations and validation failures are rethrown immediately.
+ * Cold-start failures happen before a statement executes, so a retried write is
+ * never double-applied.
  */
-const retryQuery = <T>(fn: () => Promise<T>): Promise<T> =>
-  withColdStartRetry(fn, { attempts: 3, baseDelayMs: 800 })
-
-export const prisma = buildPrismaClient()
+export const prisma = buildPrismaClient().$extends({
+  query: {
+    $allOperations({ args, query }) {
+      // `query(args)` resolves to a PrismaPromise; the cast preserves the
+      // extension's expected return type while the value is awaited identically.
+      return withColdStartRetry(() => query(args), {
+        attempts: 3,
+        baseDelayMs: 800,
+      }) as ReturnType<typeof query>
+    },
+  },
+})
 
 export const rawPrisma = prisma

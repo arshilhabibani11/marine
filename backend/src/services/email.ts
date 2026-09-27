@@ -161,4 +161,5 @@ export {
   sendRfqReceived, sendRfqResponse, sendEmergencyAlert,
   sendOfferReceived, sendOfferDecision,
   sendContactNotification, sendPasswordReset, sendWelcome,
+  sendAdminOrderEvent, sendAdminLowStock, sendAdminNewCustomer, sendAdminReport,
 } from './emailSenders.js'

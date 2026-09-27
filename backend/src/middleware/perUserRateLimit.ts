@@ -25,13 +25,10 @@ export function createUserAwareLimiter(options: {
       if (authReq.user?.id) {
         return `user:${authReq.user.id}`
       }
-      // IP-based key for unauthenticated requests
-      return (
-        (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
-        || req.ip
-        || req.socket.remoteAddress
-        || 'unknown'
-      )
+      // IP-based key for unauthenticated requests — `req.ip` is trust-proxy aware
+      // (see `app.set('trust proxy', 1)`), whereas the raw X-Forwarded-For header
+      // is client-spoofable and would let a caller rotate buckets.
+      return req.ip || req.socket.remoteAddress || 'unknown'
     },
   })
 }

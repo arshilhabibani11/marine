@@ -4,6 +4,7 @@ import type { SignOptions, JwtPayload } from 'jsonwebtoken'
 import { prisma } from '../server.js'
 import { logAudit } from '../utils/audit.js'
 import { sendWelcome, sendPasswordReset } from './email.js'
+import { notifyNewCustomer } from './adminNotifications.js'
 import logger from '../utils/logger.js'
 import { getFrontendUrl } from '../utils/env.js'
 import type { AuthUser } from '../middleware/auth.js'
@@ -60,6 +61,12 @@ export async function registerCustomer(data: { name: string; email: string; pass
   sendWelcome({ to: customer.email, name: customer.name, email: customer.email }).catch(err => {
     logger.error({ err }, 'Welcome email failed')
   })
+
+  // Admin alert (off by default; only sent when the store enables it).
+  notifyNewCustomer({
+    name: customer.name, email: customer.email,
+    company: data.company, country: data.country,
+  }).catch(err => logger.error({ err }, 'Admin new-customer notification failed'))
 
   return {
     accessToken,

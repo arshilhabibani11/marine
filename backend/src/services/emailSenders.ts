@@ -79,3 +79,38 @@ export async function sendWelcome(params: {
   const tpl = emailTemplates.welcome(params)
   await queueEmail({ ...tpl, to: params.to })
 }
+
+// ─── Admin Notifications ───────────────────────────────────────
+// Recipient is resolved by the caller (adminNotifications.ts) from settings;
+// the template itself leaves `to` empty.
+
+export async function sendAdminOrderEvent(params: {
+  to: string; event: string; orderNumber: string; status: string
+  customerName?: string; customerEmail?: string; total?: number; note?: string
+}) {
+  const tpl = emailTemplates.adminOrderEvent(params)
+  await queueEmail({ ...tpl, to: params.to })
+}
+
+export async function sendAdminLowStock(params: {
+  to: string; products: { name: string; sku: string; stockCount: number; lowStockThreshold: number }[]
+}) {
+  const tpl = emailTemplates.adminLowStock(params)
+  await queueEmail({ ...tpl, to: params.to })
+}
+
+export async function sendAdminNewCustomer(params: {
+  to: string; name: string; email: string; company?: string; country?: string
+}) {
+  const tpl = emailTemplates.adminNewCustomer(params)
+  await queueEmail({ ...tpl, to: params.to })
+}
+
+export async function sendAdminReport(params: {
+  to: string; period: 'weekly' | 'monthly'; rangeLabel: string
+  orders: number; revenue: number; newCustomers: number
+  topProducts: { name: string; quantity: number; revenue: number }[]
+}) {
+  const tpl = emailTemplates.adminReport(params)
+  await queueEmail({ ...tpl, to: params.to })
+}

@@ -76,9 +76,7 @@ import cookieParser from 'cookie-parser'
 import morgan from 'morgan'
 import { rateLimit } from 'express-rate-limit'
 import crypto from 'crypto'
-import path from 'path'
-import fs from 'fs'
-import { prisma, rawPrisma, describeDbDriver, getRedactedDbHost } from './utils/prismaClient.js'  // eslint-disable-line import/first
+import { prisma, rawPrisma, describeDbDriver, getRedactedDbHost } from './utils/prismaClient.js'
 import { withTimeout } from './utils/withTimeout.js'
 import { wakeDatabase } from './utils/dbWake.js'
 import { sanitize } from './middleware/sanitize.js'
@@ -131,6 +129,7 @@ import paypalWebhookRoutes from './routes/webhooks/paypal.js'
 
 // ─── Email Queue Processor ────────────────────────────────────
 import { startEmailQueueProcessor, stopEmailQueueProcessor } from './services/email.js'
+import { startNotificationScheduler, stopNotificationScheduler } from './services/notificationScheduler.js'
 
 // ─── App Setup ─────────────────────────────────────────────────
 const app = express()
@@ -396,6 +395,7 @@ async function shutdown(signal: string, exitCode: number) {
   shuttingDown = true
   startupLogger.info(`Shutting down (${signal})...`)
   stopEmailQueueProcessor()
+  stopNotificationScheduler()
   httpServer?.close()
   await prisma.$disconnect().catch(() => {})
   process.exit(exitCode)
@@ -463,6 +463,7 @@ async function main() {
     // polling or queued mail would never be delivered. Each tick is internally
     // guarded against errors.
     startEmailQueueProcessor()
+    startNotificationScheduler()
     startupLogger.info('APPLICATION_READY')
 
     // Heartbeat: an alive process prints every 30s, so an empty runtime log

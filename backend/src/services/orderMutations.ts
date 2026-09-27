@@ -3,6 +3,7 @@ import { generateOrderNumber } from '../utils/helpers.js'
 import { orderInclude } from '../utils/prisma-helpers.js'
 import { logAudit } from '../utils/audit.js'
 import { sendOrderShipped, sendOrderCancelled, sendOrderConfirmation } from './emailSenders.js'
+import { notifyOrderEvent } from './adminNotifications.js'
 import { escapeHtml } from '../utils/html-escape.js'
 import logger from '../utils/logger.js'
 import { processPaypalRefund } from '../utils/paypal.js'
@@ -150,6 +151,13 @@ export async function createOrder(input: CreateOrderInput) {
     newValue: order,
   })
 
+  notifyOrderEvent('orderPlaced', {
+    orderNumber: order.orderNumber,
+    status: 'pending',
+    customerName: shipping.fullName,
+    total,
+  }).catch(err => logger.error({ err }, 'Admin order notification failed'))
+
   return fullOrder
 }
 
@@ -242,6 +250,19 @@ export async function updateOrderStatus(id: string, status: string, note: string
     await sendOrderCancelledEmail(order)
   }
 
+  // Admin order-event alert, gated by Settings → Notifications. "Shipped" is
+  // fired from updateTracking (tracking added) so the two paths never duplicate.
+  const adminKey = status === 'confirmed' ? 'orderConfirmed' as const
+    : status === 'delivered' ? 'orderDelivered' as const
+    : status === 'cancelled' ? 'orderCancelled' as const
+    : null
+  if (adminKey) {
+    const contact = await orderCustomerContact(order.customerId)
+    notifyOrderEvent(adminKey, {
+      orderNumber: order.orderNumber, status, total: Number(order.total), note, ...contact,
+    }).catch(err => logger.error({ err }, 'Admin order notification failed'))
+  }
+
   return updated
 }
 
@@ -263,6 +284,12 @@ export async function updateTracking(id: string, trackingNumber: string, courier
       }).catch(err => logger.error({ err }, 'Ship email failed'))
     }
   }
+
+  const contact = await orderCustomerContact(order.customerId)
+  notifyOrderEvent('orderShipped', {
+    orderNumber: order.orderNumber, status: order.status,
+    total: Number(order.total), note: `Tracking ${trackingNumber} (${courier})`, ...contact,
+  }).catch(err => logger.error({ err }, 'Admin order notification failed'))
 
   return order
 }
@@ -293,6 +320,13 @@ export async function cancelOrder(id: string, reason: string | undefined, actor:
   })
 
   await sendOrderCancelledEmail(order)
+
+  const contact = await orderCustomerContact(order.customerId)
+  notifyOrderEvent('orderCancelled', {
+    orderNumber: order.orderNumber, status: 'cancelled',
+    total: Number(order.total), note: reason, ...contact,
+  }).catch(err => logger.error({ err }, 'Admin order notification failed'))
+
   return order
 }
 
@@ -346,6 +380,15 @@ export async function generateInvoiceHtml(id: string) {
 }
 
 // ─── Private Helpers ──────────────────────────────────────────
+
+/** Contact details for admin order alerts (empty for guest orders). */
+async function orderCustomerContact(customerId: string | null): Promise<{ customerName?: string; customerEmail?: string }> {
+  if (!customerId) return {}
+  const customer = await prisma.customer.findUnique({
+    where: { id: customerId }, select: { name: true, email: true },
+  })
+  return customer ? { customerName: customer.name, customerEmail: customer.email } : {}
+}
 
 async function restoreStockAndRefund(id: string, order: any) {
   const items = await prisma.orderItem.findMany({ where: { orderId: id } })

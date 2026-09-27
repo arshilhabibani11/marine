@@ -215,4 +215,88 @@ export const emailTemplates = {
     `)
     return { to: data.email, subject: 'Welcome to Alka Traders! 🎉', html, template: 'welcome', templateData: data as Record<string, unknown> }
   },
+
+  // ─── Admin Notifications ─────────────────────────────────────
+  // Sent to the store inbox (SALES_EMAIL) and gated by the admin toggles in
+  // Settings → Notifications. `to` is empty here and set by the sender so the
+  // recipient can be resolved from settings at call time.
+
+  adminOrderEvent(data: {
+    event: string
+    orderNumber: string
+    status: string
+    customerName?: string
+    customerEmail?: string
+    total?: number
+    note?: string
+  }): QueueEmail {
+    const html = baseLayout(`
+      <h2 style="margin:0 0 8px;color:#1e293b;font-size:22px;">${escapeHtml(data.event)} 🛒</h2>
+      <p style="color:#64748b;font-size:14px;margin:0 0 24px;">An order event just happened on Alka Traders.</p>
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:8px;padding:16px;margin-bottom:24px;">
+        <tr><td>${infoRow('Order', `<span style="color:#0ea5e9;font-weight:700;">${escapeHtml(data.orderNumber)}</span>`)}${infoRow('Status', escapeHtml(data.status))}${infoRow('Customer', escapeHtml(data.customerName || 'Guest'))}${data.customerEmail ? infoRow('Email', escapeHtml(data.customerEmail)) : ''}${data.total != null ? infoRow('Total', `<strong>$${data.total.toFixed(2)}</strong>`) : ''}${data.note ? infoRow('Note', escapeHtml(data.note)) : ''}</td></tr>
+      </table>
+      ${btn(`${FRONTEND_URL}/admin/orders`, 'Open Orders in Admin', '#0ea5e9')}
+    `)
+    return { to: '', subject: `[ORDER] ${data.event} — ${data.orderNumber}`, html, template: 'admin-order-event', templateData: data as Record<string, unknown> }
+  },
+
+  adminLowStock(data: {
+    products: { name: string; sku: string; stockCount: number; lowStockThreshold: number }[]
+  }): QueueEmail {
+    const rows = data.products.map((p) =>
+      `<tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;color:#1e293b;">${escapeHtml(p.name)}</td><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;font-family:monospace;font-size:12px;color:#64748b;">${escapeHtml(p.sku)}</td><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:700;color:${p.stockCount <= 2 ? '#dc2626' : '#f59e0b'};">${p.stockCount} left</td></tr>`
+    ).join('')
+    const html = baseLayout(`
+      <h2 style="margin:0 0 8px;color:#1e293b;font-size:22px;">Low Stock Alert ⚠️</h2>
+      <p style="color:#64748b;font-size:14px;margin:0 0 24px;">${data.products.length} product(s) are at or below their low-stock threshold.</p>
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+        <tr style="background:#f8fafc;"><th style="padding:10px 8px;text-align:left;font-size:12px;color:#64748b;text-transform:uppercase;">Product</th><th style="padding:10px 8px;text-align:left;font-size:12px;color:#64748b;">SKU</th><th style="padding:10px 8px;text-align:right;font-size:12px;color:#64748b;">Stock</th></tr>
+        ${rows}
+      </table>
+      ${btn(`${FRONTEND_URL}/admin/products?filter=low-stock`, 'Review Inventory', '#f59e0b')}
+    `)
+    return { to: '', subject: `[STOCK] ${data.products.length} product(s) low on stock`, html, template: 'admin-low-stock', templateData: data as Record<string, unknown> }
+  },
+
+  adminNewCustomer(data: { name: string; email: string; company?: string; country?: string }): QueueEmail {
+    const html = baseLayout(`
+      <h2 style="margin:0 0 8px;color:#1e293b;font-size:22px;">New Customer Registration 🎉</h2>
+      <p style="color:#64748b;font-size:14px;margin:0 0 24px;">A new customer account was just created.</p>
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:8px;padding:16px;margin-bottom:24px;">
+        <tr><td>${infoRow('Name', escapeHtml(data.name))}${infoRow('Email', escapeHtml(data.email))}${data.company ? infoRow('Company', escapeHtml(data.company)) : ''}${data.country ? infoRow('Country', escapeHtml(data.country)) : ''}</td></tr>
+      </table>
+      ${btn(`${FRONTEND_URL}/admin/customers`, 'Open Customers in Admin', '#0ea5e9')}
+    `)
+    return { to: '', subject: `[CUSTOMER] New registration — ${data.name}`, html, template: 'admin-new-customer', templateData: data as Record<string, unknown> }
+  },
+
+  adminReport(data: {
+    period: 'weekly' | 'monthly'
+    rangeLabel: string
+    orders: number
+    revenue: number
+    newCustomers: number
+    topProducts: { name: string; quantity: number; revenue: number }[]
+  }): QueueEmail {
+    const rows = data.topProducts.length > 0
+      ? data.topProducts.map((p) =>
+          `<tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;color:#1e293b;">${escapeHtml(p.name)}</td><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;text-align:center;color:#64748b;">${p.quantity}</td><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;text-align:right;color:#1e293b;">$${p.revenue.toFixed(2)}</td></tr>`
+        ).join('')
+      : '<tr><td colspan="3" style="padding:12px 0;color:#94a3b8;text-align:center;">No sales in this period.</td></tr>'
+    const html = baseLayout(`
+      <h2 style="margin:0 0 8px;color:#1e293b;font-size:22px;">${data.period === 'weekly' ? 'Weekly' : 'Monthly'} Business Report 📊</h2>
+      <p style="color:#64748b;font-size:14px;margin:0 0 24px;">${escapeHtml(data.rangeLabel)}</p>
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:8px;padding:16px;margin-bottom:24px;">
+        <tr><td>${infoRow('Orders', String(data.orders))}${infoRow('Revenue', `<strong>$${data.revenue.toFixed(2)}</strong>`)}${infoRow('New Customers', String(data.newCustomers))}</td></tr>
+      </table>
+      <h3 style="font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;margin:0 0 12px;">Top Products</h3>
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+        <tr style="background:#f8fafc;"><th style="padding:10px 8px;text-align:left;font-size:12px;color:#64748b;text-transform:uppercase;">Product</th><th style="padding:10px 8px;text-align:center;font-size:12px;color:#64748b;">Qty</th><th style="padding:10px 8px;text-align:right;font-size:12px;color:#64748b;">Revenue</th></tr>
+        ${rows}
+      </table>
+      ${btn(`${FRONTEND_URL}/admin`, 'Open Admin Dashboard', '#0ea5e9')}
+    `)
+    return { to: '', subject: `[REPORT] ${data.period === 'weekly' ? 'Weekly' : 'Monthly'} sales report — ${data.rangeLabel}`, html, template: `admin-${data.period}-report`, templateData: data as Record<string, unknown> }
+  },
 }

@@ -15,6 +15,7 @@ import {
   ImageOff,
   Boxes,
   Warehouse,
+  Mail,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAdminDashboard } from '../../hooks/useAdminDashboard'
@@ -207,6 +208,40 @@ export default function AdminDashboard() {
               </div>
             </div>
           </div>
+        ))}
+      </div>
+
+      {/* Operations Queue — counts the backend already returns but the page
+          previously never surfaced (pending orders, new RFQs/offers/messages). */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { label: 'Pending Orders', value: dashboard.pendingOrders, sub: `${dashboard.totalOrders} total`, icon: <ShoppingCart size={20} />, color: 'text-[var(--accent-blue)]', bg: 'bg-[var(--accent-blue)]/10', to: '/admin/orders' },
+          { label: 'New RFQs', value: dashboard.newRfqs, sub: `${dashboard.totalRfqs} total`, icon: <FileText size={20} />, color: 'text-[var(--accent-gold)]', bg: 'bg-[var(--accent-gold)]/10', to: '/admin/rfqs' },
+          { label: 'New Offers', value: dashboard.newOffers, sub: `${dashboard.totalOffers} total`, icon: <HandCoins size={20} />, color: 'text-[var(--success)]', bg: 'bg-[var(--success)]/10', to: '/admin/offers' },
+          { label: 'Unread Messages', value: dashboard.newMessages, sub: 'Inbox', icon: <Mail size={20} />, color: 'text-[var(--accent-teal)]', bg: 'bg-[var(--accent-teal)]/10', to: '/admin/messages' },
+        ].map((card) => (
+          <Link
+            key={card.label}
+            to={card.to}
+            className="admin-stat-card no-underline transition-all hover:-translate-y-0.5"
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                  {card.label}
+                </p>
+                <p className="mt-2 font-display text-3xl font-extrabold text-[var(--text-primary)]">
+                  {card.value}
+                </p>
+                <p className="mt-1 text-xs text-[var(--text-muted)] font-medium">
+                  {card.sub}
+                </p>
+              </div>
+              <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${card.bg} ${card.color}`}>
+                {card.icon}
+              </div>
+            </div>
+          </Link>
         ))}
       </div>
 

@@ -133,6 +133,8 @@ export const admin = {
       api.post<{ message: string }>(`/admin/rfqs/${id}/respond`, { message }, { auth: 'admin' }),
     convertToOffer: (id: string, offeredPrice: number, message?: string) =>
       api.post<{ offer: ApiOffer }>(`/admin/rfqs/${id}/convert-to-offer`, { offeredPrice, message }, { auth: 'admin' }),
+    convertToOrder: (id: string, total: number, unitPrice: number) =>
+      api.post<{ order: ApiOrder }>(`/admin/rfqs/${id}/convert-to-order`, { total, unitPrice }, { auth: 'admin' }),
   },
 
   // Offers

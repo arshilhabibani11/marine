@@ -14,11 +14,33 @@ export interface DashboardStats {
   totalCategories: number
   totalIndustries: number
   totalStockUnits: number
+  // Operations counts — surfaced on the dashboard so the panel reflects the
+  // order/RFQ/offer/message queue, not just the catalog.
+  totalOrders: number
+  pendingOrders: number
+  totalRevenue: number
+  totalCustomers: number
+  totalRfqs: number
+  newRfqs: number
+  totalOffers: number
+  newOffers: number
+  newMessages: number
   lowStockProducts: ProductAlert[]
   missingImageProducts: ProductAlert[]
   categoryBreakdown: CategoryBreakdown[]
   brandBreakdown: BrandBreakdown[]
   conditionBreakdown: ConditionBreakdown[]
+}
+
+const EMPTY_STATS: DashboardStats = {
+  totalProducts: 0, inStockProducts: 0, outOfStockProducts: 0,
+  emergencyProducts: 0, saleProducts: 0, newArrivals: 0,
+  totalBrands: 0, totalCategories: 0, totalIndustries: 0,
+  totalStockUnits: 0,
+  totalOrders: 0, pendingOrders: 0, totalRevenue: 0, totalCustomers: 0,
+  totalRfqs: 0, newRfqs: 0, totalOffers: 0, newOffers: 0, newMessages: 0,
+  lowStockProducts: [], missingImageProducts: [],
+  categoryBreakdown: [], brandBreakdown: [], conditionBreakdown: [],
 }
 
 interface ProductAlert {
@@ -98,6 +120,15 @@ export function useAdminDashboard() {
           totalCategories: s.totalCategories || 0,
           totalIndustries: s.totalIndustries || 0,
           totalStockUnits: s.totalStockUnits || 0,
+          totalOrders: s.totalOrders || 0,
+          pendingOrders: s.pendingOrders || 0,
+          totalRevenue: s.totalRevenue || 0,
+          totalCustomers: s.totalCustomers || 0,
+          totalRfqs: s.totalRfqs || 0,
+          newRfqs: s.newRfqs || 0,
+          totalOffers: s.totalOffers || 0,
+          newOffers: s.newOffers || 0,
+          newMessages: s.newMessages || 0,
           lowStockProducts: (s.lowStockProducts || []).map((p) => {
             return {
               id: p.id,
@@ -147,13 +178,7 @@ export function useAdminDashboard() {
         })
       } else {
         // Fallback: compute from empty state
-        setStats({
-          totalProducts: 0, inStockProducts: 0, outOfStockProducts: 0,
-          emergencyProducts: 0, saleProducts: 0, newArrivals: 0,
-          totalBrands: 0, totalCategories: 0, totalIndustries: 0,
-          totalStockUnits: 0, lowStockProducts: [], missingImageProducts: [],
-          categoryBreakdown: [], brandBreakdown: [], conditionBreakdown: [],
-        })
+        setStats(EMPTY_STATS)
       }
 
       // Process alerts
@@ -187,13 +212,7 @@ export function useAdminDashboard() {
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load dashboard')
       // Set empty defaults so the UI still renders
-      setStats({
-        totalProducts: 0, inStockProducts: 0, outOfStockProducts: 0,
-        emergencyProducts: 0, saleProducts: 0, newArrivals: 0,
-        totalBrands: 0, totalCategories: 0, totalIndustries: 0,
-        totalStockUnits: 0, lowStockProducts: [], missingImageProducts: [],
-        categoryBreakdown: [], brandBreakdown: [], conditionBreakdown: [],
-      })
+      setStats(EMPTY_STATS)
     } finally {
       setLoading(false)
     }
@@ -204,13 +223,7 @@ export function useAdminDashboard() {
   }, [fetchDashboard])
 
   return {
-    stats: stats || {
-      totalProducts: 0, inStockProducts: 0, outOfStockProducts: 0,
-      emergencyProducts: 0, saleProducts: 0, newArrivals: 0,
-      totalBrands: 0, totalCategories: 0, totalIndustries: 0,
-      totalStockUnits: 0, lowStockProducts: [], missingImageProducts: [],
-      categoryBreakdown: [], brandBreakdown: [], conditionBreakdown: [],
-    },
+    stats: stats || EMPTY_STATS,
     activity,
     alerts,
     loading,

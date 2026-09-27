@@ -61,10 +61,45 @@ export default function ProductDetail() {
   const product = productData?.product
   const related = productData?.related || []
 
+  // ── Sticky mobile add-to-cart bar ─────────────────────────────
+  // Shows a fixed bottom bar on mobile when the main CTA scrolls out of view.
+  // These hooks MUST run before the loading/not-found early returns below —
+  // otherwise the hook count changes between the loading render and the loaded
+  // render and React throws "Rendered more hooks than during the previous render".
+  const ctaRef = useRef<HTMLDivElement>(null)
+  const [showStickyBar, setShowStickyBar] = useState(false)
+
+  const handleCtaIntersection = useCallback((entries: IntersectionObserverEntry[]) => {
+    // Only on mobile — hide sticky bar when CTA is visible, show when hidden
+    if (window.innerWidth >= 1024) return
+    const entry = entries[0]
+    if (entry) {
+      setShowStickyBar(!entry.isIntersecting)
+    }
+  }, [])
+
   useEffect(() => {
     window.scrollTo(0, 0)
     setAdded(false)
     setQuantity(1)
+  }, [id])
+
+  // Attach the observer once the CTA is actually mounted. While loading, the ref
+  // is still null, so `product` is a dependency to re-run when it resolves.
+  useEffect(() => {
+    const el = ctaRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(handleCtaIntersection, {
+      threshold: 0,
+      rootMargin: '0px 0px -80px 0px', // trigger before fully leaving viewport
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [handleCtaIntersection, product])
+
+  // Reset sticky bar visibility on product change
+  useEffect(() => {
+    setShowStickyBar(false)
   }, [id])
 
   if (isLoading) {
@@ -119,37 +154,6 @@ export default function ProductDetail() {
     for (let i = 0; i < quantity; i++) addToCart(product)
     navigate('/checkout')
   }
-
-  // ── Sticky mobile add-to-cart bar ─────────────────────────────
-  // Shows a fixed bottom bar on mobile when the main CTA scrolls
-  // out of view, so users never have to scroll back up.
-  const ctaRef = useRef<HTMLDivElement>(null)
-  const [showStickyBar, setShowStickyBar] = useState(false)
-
-  const handleCtaIntersection = useCallback((entries: IntersectionObserverEntry[]) => {
-    // Only on mobile — hide sticky bar when CTA is visible, show when hidden
-    if (window.innerWidth >= 1024) return
-    const entry = entries[0]
-    if (entry) {
-      setShowStickyBar(!entry.isIntersecting)
-    }
-  }, [])
-
-  useEffect(() => {
-    const el = ctaRef.current
-    if (!el) return
-    const observer = new IntersectionObserver(handleCtaIntersection, {
-      threshold: 0,
-      rootMargin: '0px 0px -80px 0px', // trigger before fully leaving viewport
-    })
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [handleCtaIntersection])
-
-  // Reset sticky bar visibility on product change
-  useEffect(() => {
-    setShowStickyBar(false)
-  }, [id])
 
   return (
     <div className="py-8">

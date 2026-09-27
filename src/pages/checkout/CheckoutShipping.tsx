@@ -21,6 +21,32 @@ interface CheckoutShippingProps {
   isGuest?: boolean
 }
 
+// Reusable field wrapper with label, error message, and aria attributes.
+// Declared at module scope: a component defined inside the render body is a new
+// type on every render, so React would unmount/remount the input on each
+// keystroke and the field would lose focus.
+function Field({ label, required, error, errorMessage, children }: {
+  label: string
+  required?: boolean
+  error?: boolean
+  errorMessage?: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="mb-1">
+      <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
+        {label} {required && <span className="text-[var(--danger)]">*</span>}
+      </label>
+      {children}
+      {error && (
+        <p className="mt-1 text-[11px] text-[var(--danger)]" role="alert">
+          {errorMessage || 'This field is required'}
+        </p>
+      )}
+    </div>
+  )
+}
+
 export function CheckoutShipping({ shipping, errors, updateShipping, goToStep, isGuest }: CheckoutShippingProps) {
   const { t } = useTranslation()
 
@@ -29,28 +55,13 @@ export function CheckoutShipping({ shipping, errors, updateShipping, goToStep, i
       errors[field] ? 'border-[var(--danger)] focus:border-[var(--danger)]' : 'border-[var(--input-border)]'
     }`
 
-  // Reusable field wrapper with label, error message, and aria attributes
-  const Field = ({ field, label, required, children }: { field: string; label: string; required?: boolean; children: React.ReactNode }) => (
-    <div className="mb-1">
-      <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
-        {label} {required && <span className="text-[var(--danger)]">*</span>}
-      </label>
-      {children}
-      {errors[field] && (
-        <p className="mt-1 text-[11px] text-[var(--danger)]" role="alert">
-          {field === 'email' ? 'Please enter a valid email address' : 'This field is required'}
-        </p>
-      )}
-    </div>
-  )
-
   return (
     <div className="bg-[var(--surface)] border border-[var(--border)] p-5 sm:p-8">
       <h3 className="text-lg font-semibold mb-6 flex items-center gap-2">
         <MapPin size={18} className="text-[var(--accent-primary)]" /> {t('checkout.stepShipping')}
       </h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <Field field="fullName" label={t('checkout.fullName')} required>
+        <Field label={t('checkout.fullName')} required error={errors.fullName}>
           <input
             type="text"
             value={shipping.fullName}
@@ -64,7 +75,12 @@ export function CheckoutShipping({ shipping, errors, updateShipping, goToStep, i
         </Field>
 
         {isGuest && (
-          <Field field="email" label="Email Address" required>
+          <Field
+            label="Email Address"
+            required
+            error={errors.email}
+            errorMessage="Please enter a valid email address"
+          >
             <input
               type="email"
               value={shipping.email}
@@ -78,7 +94,7 @@ export function CheckoutShipping({ shipping, errors, updateShipping, goToStep, i
           </Field>
         )}
 
-        <Field field="addressLine1" label={t('checkout.addressLine1')} required>
+        <Field label={t('checkout.addressLine1')} required error={errors.addressLine1}>
           <input
             type="text"
             value={shipping.addressLine1}
@@ -91,7 +107,7 @@ export function CheckoutShipping({ shipping, errors, updateShipping, goToStep, i
           />
         </Field>
 
-        <Field field="addressLine2" label={t('checkout.addressLine2')}>
+        <Field label={t('checkout.addressLine2')}>
           <input
             type="text"
             value={shipping.addressLine2}
@@ -103,7 +119,7 @@ export function CheckoutShipping({ shipping, errors, updateShipping, goToStep, i
           />
         </Field>
 
-        <Field field="city" label={t('checkout.city')} required>
+        <Field label={t('checkout.city')} required error={errors.city}>
           <input
             type="text"
             value={shipping.city}
@@ -116,7 +132,7 @@ export function CheckoutShipping({ shipping, errors, updateShipping, goToStep, i
           />
         </Field>
 
-        <Field field="state" label={t('checkout.state')} required>
+        <Field label={t('checkout.state')} required error={errors.state}>
           <input
             type="text"
             value={shipping.state}
@@ -129,7 +145,7 @@ export function CheckoutShipping({ shipping, errors, updateShipping, goToStep, i
           />
         </Field>
 
-        <Field field="postalCode" label={t('checkout.postalCode')} required>
+        <Field label={t('checkout.postalCode')} required error={errors.postalCode}>
           <input
             type="text"
             value={shipping.postalCode}
@@ -142,7 +158,7 @@ export function CheckoutShipping({ shipping, errors, updateShipping, goToStep, i
           />
         </Field>
 
-        <Field field="country" label={t('checkout.country')} required>
+        <Field label={t('checkout.country')} required error={errors.country}>
           <select
             value={shipping.country}
             onChange={(e) => updateShipping('country', e.target.value)}
