@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { isCancelledOrRefunded } from './orderStatus'
 
 interface Props {
   orders: any[]
@@ -9,7 +10,7 @@ export function RevenueForecast({ orders }: Props) {
   const [horizon, setHorizon] = useState<'30d' | '60d' | '90d'>('30d')
 
   const forecast = useMemo(() => {
-    const completed = orders.filter((o: any) => !['cancelled', 'refunded'].includes(o.status))
+    const completed = orders.filter((o: any) => !isCancelledOrRefunded(o))
     if (completed.length === 0) return null
 
     // Group by day

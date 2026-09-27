@@ -1,6 +1,7 @@
 import { prisma } from '../server.js'
 import { generateSlug } from '../utils/helpers.js'
 import { logAudit } from '../utils/audit.js'
+import { invalidateCachePath } from '../middleware/cacheGet.js'
 import type { AuthUser } from '../middleware/auth.js'
 
 // ─── Queries ──────────────────────────────────────────────────
@@ -39,6 +40,7 @@ export async function createIndustry(data: Record<string, unknown>, actor: AuthU
   if (existing) throw Object.assign(new Error('Industry with this name already exists'), { status: 400 })
 
   const industry = await prisma.industry.create({ data: { ...data, slug } as never })
+  invalidateCachePath('/storefront/industries')
   await logAudit({ actor, action: 'industry.create', entityType: 'industry', entityId: industry.id, entityName: industry.name, newValue: industry, ipAddress })
   return { industry }
 }
@@ -55,6 +57,7 @@ export async function updateIndustry(id: string, data: Record<string, unknown>, 
   }
 
   const industry = await prisma.industry.update({ where: { id }, data: { ...data, slug } })
+  invalidateCachePath('/storefront/industries')
   await logAudit({ actor, action: 'industry.update', entityType: 'industry', entityId: industry.id, entityName: industry.name, previousValue: existing, newValue: industry, ipAddress })
   return { industry }
 }
@@ -68,6 +71,7 @@ export async function deleteIndustry(id: string, actor: AuthUser, ipAddress = ''
   if (existing._count.products > 0) throw Object.assign(new Error('Cannot delete industry with products.'), { status: 400 })
 
   await prisma.industry.delete({ where: { id } })
+  invalidateCachePath('/storefront/industries')
   await logAudit({ actor, action: 'industry.delete', entityType: 'industry', entityId: existing.id, entityName: existing.name, previousValue: existing, ipAddress })
   return { message: 'Industry deleted' }
 }

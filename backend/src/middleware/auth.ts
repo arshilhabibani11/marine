@@ -86,12 +86,16 @@ export function optionalCustomerAuth(req: AuthRequest, _res: Response, next: Nex
 }
 
 // ─── Require Role ──────────────────────────────────────────────
+// requireRole() is a threshold check (userLevel >= requiredLevel), so two roles
+// that share a level silently grant each other's permissions. `sales-agent`
+// (customers/RFQs/offers) and `content-manager` (brand-logo) are independent
+// domains and must not be equal, or each passes the other's routes.
 const ROLE_HIERARCHY: Record<string, number> = {
   'owner': 6,
   'store-manager': 5,
   'inventory-manager': 4,
   'sales-agent': 3,
-  'content-manager': 3,
+  'content-manager': 2,
   'viewer': 1,
 }
 

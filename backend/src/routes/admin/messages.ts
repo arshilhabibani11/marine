@@ -9,15 +9,17 @@ const router = Router()
 router.use(authenticateAdmin)
 
 const composeSchema = z.object({
-  name: z.string().min(1),
-  email: z.string().email(),
-  subject: z.string().optional(),
+  to: z.string().email(),
+  subject: z.string().min(1),
   message: z.string().min(1),
-  internalNotes: z.string().optional(),
 })
 
 const replySchema = z.object({
   message: z.string().min(1),
+})
+
+const starSchema = z.object({
+  starred: z.boolean(),
 })
 
 // ─── List All Messages ────────────────────────────────────────
@@ -25,6 +27,7 @@ router.get('/', asyncHandler(async (req, res) => {
   sendSuccess(res, await messageService.listMessages({
     status: req.query.status as string,
     search: req.query.search as string,
+    folder: req.query.folder as string,
     page: Number(req.query.page),
     limit: Number(req.query.limit),
   }))
@@ -57,6 +60,15 @@ router.patch('/:id/read', asyncHandler(async (req: AuthRequest, res) => {
   }
 }))
 
+// ─── Star / Unstar Message ────────────────────────────────────
+router.patch('/:id/star', validateBody(starSchema), asyncHandler(async (req: AuthRequest, res) => {
+  try {
+    sendSuccess(res, await messageService.starMessage(req.params.id as string, req.body.starred, req.user!, req.ip))
+  } catch (err: any) {
+    sendError(res, err.message, err.status || 500)
+  }
+}))
+
 // ─── Archive Message ──────────────────────────────────────────
 router.patch('/:id/archive', asyncHandler(async (req: AuthRequest, res) => {
   try {
@@ -66,10 +78,28 @@ router.patch('/:id/archive', asyncHandler(async (req: AuthRequest, res) => {
   }
 }))
 
-// ─── Delete Message ───────────────────────────────────────────
+// ─── Delete Message (soft — moves to Trash) ───────────────────
 router.delete('/:id', requireRole('store-manager'), asyncHandler(async (req: AuthRequest, res) => {
   try {
     sendSuccess(res, await messageService.deleteMessage(req.params.id as string, req.user!, req.ip))
+  } catch (err: any) {
+    sendError(res, err.message, err.status || 500)
+  }
+}))
+
+// ─── Restore Message from Trash ───────────────────────────────
+router.patch('/:id/restore', requireRole('store-manager'), asyncHandler(async (req: AuthRequest, res) => {
+  try {
+    sendSuccess(res, await messageService.restoreMessage(req.params.id as string, req.user!, req.ip))
+  } catch (err: any) {
+    sendError(res, err.message, err.status || 500)
+  }
+}))
+
+// ─── Permanently Delete Message ───────────────────────────────
+router.delete('/:id/permanent', requireRole('store-manager'), asyncHandler(async (req: AuthRequest, res) => {
+  try {
+    sendSuccess(res, await messageService.destroyMessage(req.params.id as string, req.user!, req.ip))
   } catch (err: any) {
     sendError(res, err.message, err.status || 500)
   }

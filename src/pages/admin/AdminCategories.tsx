@@ -83,7 +83,16 @@ export default function AdminCategories() {
     setLoading(true)
     try {
       const res = await admin.categories.list()
-      const cats = (res.categories || []).map((c: ApiCategory & { productCount?: number }) => ({
+      // The admin endpoint returns only top-level categories, each with its
+      // subcategories nested under `children`. Flatten so the tree can render
+      // and edit every level.
+      const topLevel = (res.categories || []) as (ApiCategory & { children?: ApiCategory[] })[]
+      const rows: (ApiCategory & { productCount?: number })[] = []
+      for (const c of topLevel) {
+        rows.push(c)
+        for (const child of c.children || []) rows.push(child)
+      }
+      const cats = rows.map((c) => ({
         id: c.id || c.slug,
         name: c.name,
         slug: c.slug,
@@ -162,8 +171,17 @@ export default function AdminCategories() {
     }
   }
 
-  const handleToggleVisibility = (catId: string) => {
-    setCategories((prev) => prev.map((c) => c.id === catId ? { ...c, isVisible: !c.isVisible } : c))
+  const handleToggleVisibility = async (catId: string) => {
+    const cat = categories.find((c) => c.id === catId)
+    if (!cat) return
+    const nextVisible = !cat.isVisible
+    setCategories((prev) => prev.map((c) => c.id === catId ? { ...c, isVisible: nextVisible } : c))
+    try {
+      await admin.categories.update(catId, { isVisible: nextVisible })
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Failed to update visibility', 'error')
+      setCategories((prev) => prev.map((c) => c.id === catId ? { ...c, isVisible: !nextVisible } : c))
+    }
   }
 
   const handleMoveCategory = async (catId: string, direction: 'up' | 'down') => {

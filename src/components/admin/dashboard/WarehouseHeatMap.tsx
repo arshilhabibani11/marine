@@ -37,7 +37,7 @@ export function WarehouseHeatMap({ products }: Props) {
       bin.products++
       bin.stockValue += (product.price || 0) * (product.stockCount || 0)
       if ((product.stockCount || 0) === 0) bin.outOfStock++
-      else if ((product.stockCount || 0) <= (product.lowStockThreshold || 5)) bin.lowStock++
+      else if ((product.stockCount || 0) <= (product.lowStockThreshold || 10)) bin.lowStock++
     }
 
     const bins: LocationBin[] = Object.entries(locationMap)
@@ -61,7 +61,7 @@ export function WarehouseHeatMap({ products }: Props) {
         categories[cat].products++
         categories[cat].stockValue += (p.price || 0) * (p.stockCount || 0)
         if ((p.stockCount || 0) === 0) categories[cat].outOfStock++
-        else if ((p.stockCount || 0) <= (p.lowStockThreshold || 5)) categories[cat].lowStock++
+        else if ((p.stockCount || 0) <= (p.lowStockThreshold || 10)) categories[cat].lowStock++
       }
       return Object.entries(categories)
         .map(([id, data]) => ({

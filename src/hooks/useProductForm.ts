@@ -16,6 +16,7 @@ export interface ProductFormData {
   brand: string
   category: string
   industries: string[]
+  status: string
   condition: string
   availability: string
   shortDescription: string
@@ -28,7 +29,6 @@ export interface ProductFormData {
   makeOfferEnabled: boolean
   minimumOfferPrice: string
   currency: string
-  inStock: boolean
   stockCount: string
   lowStockThreshold: string
   warehouseLocation: string
@@ -70,6 +70,7 @@ function getEmptyForm(): ProductFormData {
     brand: '',
     category: '',
     industries: [],
+    status: 'published',
     condition: 'used',
     availability: 'in-stock',
     shortDescription: '',
@@ -82,9 +83,8 @@ function getEmptyForm(): ProductFormData {
     makeOfferEnabled: true,
     minimumOfferPrice: '',
     currency: 'USD',
-    inStock: true,
     stockCount: '1',
-    lowStockThreshold: '5',
+    lowStockThreshold: '10',
     warehouseLocation: '',
     leadTime: '',
     specs: [{ name: '', value: '' }],
@@ -114,6 +114,7 @@ function getFormFromProduct(product: ApiProduct): ProductFormData {
     industries: Array.isArray(product.industries)
       ? product.industries.map((i) => typeof i === 'object' ? (i.industry?.id || '') : i)
       : (Array.isArray(product.industryIds) ? product.industryIds : []),
+    status: product.status || 'draft',
     condition: product.condition || 'used',
     availability: product.availability || 'in-stock',
     shortDescription: product.shortDescription || product.description?.split('—')[0]?.trim() || '',
@@ -132,9 +133,8 @@ function getFormFromProduct(product: ApiProduct): ProductFormData {
     makeOfferEnabled: product.makeOfferEnabled ?? product.makeOffer ?? false,
     minimumOfferPrice: product.minimumOfferPrice ? String(product.minimumOfferPrice) : '',
     currency: product.currency || 'USD',
-    inStock: product.inStock ?? product.stockCount > 0,
     stockCount: (product.stockCount ?? 0).toString(),
-    lowStockThreshold: (product.lowStockThreshold ?? 5).toString(),
+    lowStockThreshold: (product.lowStockThreshold ?? 10).toString(),
     warehouseLocation: product.warehouseLocation || '',
     leadTime: product.leadTime || '',
     specs: Array.isArray(product.specs)
@@ -428,6 +428,7 @@ export function useProductForm() {
         brandId: brandId || null,
         categoryId: form.category || null,
         industryIds: form.industries,
+        status: form.status,
         condition: form.condition,
         availability: form.availability,
         shortDescription: form.shortDescription,
@@ -447,9 +448,8 @@ export function useProductForm() {
         makeOfferEnabled: form.makeOfferEnabled,
         minimumOfferPrice: form.makeOfferEnabled && form.minimumOfferPrice ? Number(form.minimumOfferPrice) : null,
         currency: form.currency,
-        inStock: form.inStock,
         stockCount: Number(form.stockCount) || 0,
-        lowStockThreshold: Number(form.lowStockThreshold) || 5,
+        lowStockThreshold: Number(form.lowStockThreshold) || 10,
         warehouseLocation: form.warehouseLocation,
         leadTime: form.leadTime,
         specs: form.specs.filter((s) => s.name.trim()),

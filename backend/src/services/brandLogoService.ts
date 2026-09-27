@@ -3,34 +3,11 @@ import sharp from 'sharp'
 import { v2 as cloudinary } from 'cloudinary'
 import { prisma } from '../server.js'
 import { logAudit } from '../utils/audit.js'
+import { invalidateCachePath } from '../middleware/cacheGet.js'
 import type { AuthUser } from '../middleware/auth.js'
 
 // Configure Cloudinary from env (same config used by mediaService.ts)
 cloudinary.config()
-
-// ─── Queries ──────────────────────────────────────────────────
-export async function getBrandLogo() {
-  const setting = await prisma.storeSetting.findUnique({ where: { key: 'site.brandLogo' } })
-  return { logoUrl: setting?.value || null }
-}
-
-// ─── Mutations ────────────────────────────────────────────────
-export async function updateBrandLogo(logoUrl: string, actor: AuthUser, ipAddress = '') {
-  await prisma.storeSetting.upsert({
-    where: { key: 'site.brandLogo' },
-    update: { value: logoUrl, updatedBy: actor.id },
-    create: { key: 'site.brandLogo', value: logoUrl, updatedBy: actor.id },
-  })
-
-  await logAudit({ actor, action: 'brand-logo.update', entityType: 'store_settings', entityName: 'brandLogo', ipAddress })
-  return { message: 'Brand logo updated' }
-}
-
-export async function deleteBrandLogo(actor: AuthUser, ipAddress = '') {
-  await prisma.storeSetting.deleteMany({ where: { key: 'site.brandLogo' } })
-  await logAudit({ actor, action: 'brand-logo.delete', entityType: 'store_settings', entityName: 'brandLogo', ipAddress })
-  return { message: 'Brand logo deleted' }
-}
 
 // ─── Upload (per-brand logo → Cloudinary) ──────────────────
 export async function uploadBrandLogo(brandId: string, file: Express.Multer.File, actor: AuthUser, ipAddress = '') {
@@ -57,6 +34,8 @@ export async function uploadBrandLogo(brandId: string, file: Express.Multer.File
   }
 
   const updated = await prisma.brand.update({ where: { id: brandId }, data: { logoUrl: url } })
+  // Brand cards are cached on the storefront — drop the stale response.
+  invalidateCachePath('/storefront/brands')
 
   await logAudit({
     actor, action: 'brand.logo.upload', entityType: 'brand', entityId: brand.id, entityName: brand.name,

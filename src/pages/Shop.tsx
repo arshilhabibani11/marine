@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { ArrowRight, Truck, ShieldCheck, Clock, Package } from 'lucide-react'
 import { apiProductsToFrontend } from '../lib/adapters'
 import { useAddToCart } from '../hooks/useAddToCart'
-import { useNewArrivals, useFeaturedProducts, useCategories } from '../hooks/useApiQuery'
+import { useNewArrivals, useFeaturedProducts, useCategories, useProductList } from '../hooks/useApiQuery'
 import { products as staticProducts } from '../data/products'
 import { SectionLabel } from '../components/ui/SectionLabel'
 import { ProductCard } from '../components/ui/ProductCard'
@@ -26,6 +26,7 @@ export default function Shop() {
   // React Query provides caching, deduplication, and background refetching
   const { data: newArrivalsData } = useNewArrivals()
   const { data: featuredData } = useFeaturedProducts()
+  const { data: latestData } = useProductList({ limit: '8', sort: 'newest' })
   const { data: categoriesData } = useCategories()
 
   const newArrivals: Product[] = useMemo(() => {
@@ -42,6 +43,16 @@ export default function Shop() {
     }
     return staticProducts.slice(0, 8)
   }, [featuredData])
+
+  // Latest published catalog items — guarantees every published product can
+  // surface on the shop page even when it is neither featured nor flagged as
+  // a new arrival.
+  const latestProducts: Product[] = useMemo(() => {
+    if (latestData?.products?.length) {
+      return apiProductsToFrontend(latestData.products).slice(0, 8)
+    }
+    return staticProducts.slice(0, 8)
+  }, [latestData])
 
   const categories: CategoryWithCount[] = useMemo(() => {
     if (categoriesData?.categories?.length) {
@@ -206,6 +217,37 @@ export default function Shop() {
                   onAddToCart={handleAddToCart}
                   t={t}
                 />
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── LATEST PRODUCTS ── */}
+      <section className="py-16 bg-[var(--secondary-bg)]">
+        <div className="max-w-[1280px] mx-auto px-4 sm:px-6">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <SectionLabel>{t('shop.latestProducts')}</SectionLabel>
+              <h2 className="font-display font-bold text-section tracking-tight text-[var(--text-primary)] mt-2">
+                {t('shop.freshInventory')}
+              </h2>
+            </div>
+            <Link
+              to="/products"
+              className="inline-flex items-center gap-2 text-sm font-bold border-2 border-[var(--accent-primary)] text-[var(--accent-primary)] px-5 py-2.5 rounded-xl hover:bg-[var(--accent-primary)] hover:text-[var(--btn-blue-text)] transition-all duration-300 no-underline"
+            >
+              {t('shop.fullCatalog')} <ArrowRight size={16} />
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {latestProducts.map((product) => (
+              <ProductCard
+                key={product.id}
+                product={product}
+                added={addedIds.has(product.id)}
+                onAddToCart={handleAddToCart}
+                t={t}
+              />
             ))}
           </div>
         </div>

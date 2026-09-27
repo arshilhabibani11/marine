@@ -6,7 +6,10 @@ import { Package, Truck, Clock, CheckCircle, XCircle, CreditCard } from 'lucide-
 export type OrderStatus = 'pending' | 'confirmed' | 'paid' | 'processing' | 'packed' | 'shipped' | 'delivered' | 'cancelled'
 
 export interface Order {
+  /** Backend UUID — use this for every API call. */
   id: string
+  /** Human-facing order number (e.g. AT-ORD-...). */
+  orderNumber: string
   customerName: string
   customerEmail: string
   company: string
@@ -38,7 +41,8 @@ export function mapApiOrder(o: ApiOrder): Order {
     price: item.price || item.unitPrice || 0,
   }))
   return {
-    id: o.orderNumber || o.id,
+    id: o.id,
+    orderNumber: o.orderNumber || o.id,
     customerName: o.customer?.name || (oAny.customerName as string) || o.customer?.email || '',
     customerEmail: o.customer?.email || (oAny.customerEmail as string) || '',
     company: (oAny.company as string) || '',

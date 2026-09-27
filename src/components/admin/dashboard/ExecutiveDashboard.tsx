@@ -24,11 +24,11 @@ export function ExecutiveDashboard({ orders, rfqs, alerts, products }: Props) {
     const weekRevenue = thisWeekOrders.reduce((s: number, o: any) => s + (o.status !== 'cancelled' ? (o.total || 0) : 0), 0)
     const todayRevenue = todayOrders.reduce((s: number, o: any) => s + (o.status !== 'cancelled' ? (o.total || 0) : 0), 0)
 
-    const pendingRfqs = rfqs.filter(r => r.status === 'new' || r.status === 'in-progress')
+    const pendingRfqs = rfqs.filter(r => r.status !== 'won' && r.status !== 'lost' && r.status !== 'closed')
     const emergencyRfqs = rfqs.filter(r => r.urgency === 'emergency' && r.status !== 'closed')
     const dangerAlerts = alerts.filter((a: any) => a.type === 'danger')
 
-    const lowStockProducts = products.filter((p: any) => (p.stockCount || 0) <= (p.lowStockThreshold || 5))
+    const lowStockProducts = products.filter((p: any) => (p.stockCount || 0) <= (p.lowStockThreshold || 10))
     const outOfStock = products.filter((p: any) => (p.stockCount || 0) === 0)
 
     // Revenue per product category

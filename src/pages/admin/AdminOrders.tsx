@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { Download } from 'lucide-react'
 import { admin } from '../../lib/api'
+import { downloadCsv } from '../../lib/utils'
 import { useToast } from '../../components/admin/toast-context'
 import type { Order, OrderStatus } from './orders/types'
 import { mapApiOrder, getNextStatuses, ITEMS_PER_PAGE } from './orders/types'
@@ -81,21 +82,20 @@ export default function AdminOrders() {
     return counts
   }, [orders])
 
-  const handleExportCsv = () => {
-    const headers = ['Order ID', 'Customer', 'Company', 'Country', 'Items', 'Subtotal', 'Shipping', 'Tax', 'Total', 'Status', 'Payment', 'Payment Status', 'Created', 'Tracking']
-    const rows = filteredOrders.map((o) => [
-      o.id, o.customerName, o.company, o.country,
-      o.items.length.toString(), o.subtotal.toString(), o.shipping.toString(), o.tax.toString(), o.total.toString(),
-      o.status, o.paymentMethod, o.paymentStatus, o.createdAt, o.trackingNumber,
-    ])
-    const csv = [headers.join(','), ...rows.map((r) => r.map((c) => `"${c}"`).join(','))].join('\n')
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `orders-export-${new Date().toISOString().split('T')[0]}.csv`
-    link.click()
-    URL.revokeObjectURL(url)
+  const [exporting, setExporting] = useState(false)
+
+  // Exports the full order dataset from the server (not just the current page).
+  const handleExportCsv = async () => {
+    setExporting(true)
+    try {
+      const csv = await admin.orders.exportCsv()
+      downloadCsv(csv, `orders-export-${new Date().toISOString().split('T')[0]}.csv`)
+      toast('Orders exported to CSV', 'success')
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Export failed', 'error')
+    } finally {
+      setExporting(false)
+    }
   }
 
   const handleAdvanceStatus = async (orderId: string) => {
@@ -136,10 +136,11 @@ export default function AdminOrders() {
         </div>
         <button
           onClick={handleExportCsv}
-          className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-2.5 text-xs font-bold text-[var(--text-secondary)] transition-all hover:border-[var(--accent-teal)] hover:text-[var(--accent-teal)]"
+          disabled={exporting}
+          className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-2.5 text-xs font-bold text-[var(--text-secondary)] transition-all hover:border-[var(--accent-teal)] hover:text-[var(--accent-teal)] disabled:opacity-50"
         >
           <Download size={14} />
-          Export CSV
+          {exporting ? 'Exporting...' : 'Export CSV'}
         </button>
       </div>
 

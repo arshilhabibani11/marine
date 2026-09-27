@@ -445,6 +445,7 @@ model ContactMessage {
   subject       String?  @db.VarChar(500)
   message       String   @db.Text
   status        String   @default("new") @db.VarChar(20)
+  isStarred     Boolean  @default(false) @map("is_starred")
   assignedTo    String?  @map("assigned_to") @db.Uuid
   internalNotes String?  @map("internal_notes") @db.Text
   source        String   @default("contact-form") @db.VarChar(50)
@@ -454,6 +455,7 @@ model ContactMessage {
   assignee AdminUser? @relation(fields: [assignedTo], references: [id])
 
   @@index([status])
+  @@index([isStarred])
   @@map("contact_messages")
 }
 

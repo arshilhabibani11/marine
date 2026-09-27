@@ -1,6 +1,7 @@
 import { prisma } from '../server.js'
 import { generateSlug } from '../utils/helpers.js'
 import { logAudit } from '../utils/audit.js'
+import { invalidateCachePath } from '../middleware/cacheGet.js'
 import type { AuthUser } from '../middleware/auth.js'
 
 // ─── Queries ──────────────────────────────────────────────────
@@ -41,6 +42,7 @@ export async function createBrand(data: Record<string, unknown>, actor: AuthUser
   if (existing) throw Object.assign(new Error('Brand with this name already exists'), { status: 400 })
 
   const brand = await prisma.brand.create({ data: { ...data, slug } as never })
+  invalidateCachePath('/storefront/brands')
   await logAudit({ actor, action: 'brand.create', entityType: 'brand', entityId: brand.id, entityName: brand.name, newValue: brand, ipAddress })
   return { brand }
 }
@@ -57,6 +59,7 @@ export async function updateBrand(id: string, data: Record<string, unknown>, act
   }
 
   const brand = await prisma.brand.update({ where: { id }, data: { ...data, slug } })
+  invalidateCachePath('/storefront/brands')
   await logAudit({ actor, action: 'brand.update', entityType: 'brand', entityId: brand.id, entityName: brand.name, previousValue: existing, newValue: brand, ipAddress })
   return { brand }
 }
@@ -70,6 +73,7 @@ export async function deleteBrand(id: string, actor: AuthUser, ipAddress = '') {
   if (existing._count.products > 0) throw Object.assign(new Error('Cannot delete brand with products. Reassign products first.'), { status: 400 })
 
   await prisma.brand.delete({ where: { id } })
+  invalidateCachePath('/storefront/brands')
   await logAudit({ actor, action: 'brand.delete', entityType: 'brand', entityId: existing.id, entityName: existing.name, previousValue: existing, ipAddress })
   return { message: 'Brand deleted' }
 }

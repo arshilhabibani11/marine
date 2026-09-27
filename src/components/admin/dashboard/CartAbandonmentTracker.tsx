@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { ShoppingCart, AlertTriangle, TrendingDown } from 'lucide-react'
+import { isRefundedOrder } from './orderStatus'
 
 interface Props {
   orders: any[]
@@ -13,7 +14,7 @@ export function CartAbandonmentTracker({ orders }: Props) {
     const processing = orders.filter((o: any) => ['confirmed', 'paid', 'processing', 'packed'].includes(o.status))
     const pending = orders.filter((o: any) => o.status === 'pending')
     const cancelled = orders.filter((o: any) => o.status === 'cancelled')
-    const refunded = orders.filter((o: any) => o.status === 'refunded')
+    const refunded = orders.filter((o: any) => isRefundedOrder(o))
 
     const completionRate = total > 0 ? (completed.length / total) * 100 : 0
     const abandonmentRate = total > 0 ? ((pending.length + cancelled.length) / total) * 100 : 0

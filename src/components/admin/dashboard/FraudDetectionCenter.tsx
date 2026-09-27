@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { AlertOctagon } from 'lucide-react'
+import { orderCustomerEmail } from './orderFields'
 
 interface Props {
   orders: any[]
@@ -25,7 +26,7 @@ export function FraudDetectionCenter({ orders }: Props) {
     // 1. Velocity checks — multiple orders from same email in short time
     const emailOrders: Record<string, Array<{ order: any; time: number }>> = {}
     for (const order of orders) {
-      const email = order.email || order.customerEmail || ''
+      const email = orderCustomerEmail(order)
       if (!email) continue
       if (!emailOrders[email]) emailOrders[email] = []
       emailOrders[email].push({ order, time: new Date(order.createdAt).getTime() })
@@ -77,7 +78,7 @@ export function FraudDetectionCenter({ orders }: Props) {
           description: `Order value $${order.total.toLocaleString()} is ${(order.total / Math.max(1, avgValue)).toFixed(1)}x average`,
           severity: 'medium',
           orderId: order.id,
-          email: order.email || order.customerEmail,
+          email: orderCustomerEmail(order),
           amount: order.total,
           evidence: `Average order: $${Math.round(avgValue).toLocaleString()}, this order: $${order.total.toLocaleString()}`,
         })
@@ -95,7 +96,7 @@ export function FraudDetectionCenter({ orders }: Props) {
             description: `High-value order ($${order.total.toLocaleString()}) placed < 1 hour ago`,
             severity: 'medium',
             orderId: order.id,
-            email: order.email || order.customerEmail,
+            email: orderCustomerEmail(order),
             amount: order.total,
             evidence: 'New high-value order — verify payment before shipping',
           })

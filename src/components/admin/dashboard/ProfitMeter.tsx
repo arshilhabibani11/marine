@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { DollarSign, TrendingUp, TrendingDown } from 'lucide-react'
+import { isCancelledOrRefunded } from './orderStatus'
 
 interface Props {
   orders: any[]
@@ -8,7 +9,7 @@ interface Props {
 
 export function ProfitMeter({ orders }: Props) {
   const data = useMemo(() => {
-    const completedOrders = orders.filter((o: any) => !['cancelled', 'refunded'].includes(o.status))
+    const completedOrders = orders.filter((o: any) => !isCancelledOrRefunded(o))
 
     const totalRevenue = completedOrders.reduce((s: number, o: any) => s + (o.total || 0), 0)
     const totalSubtotal = completedOrders.reduce((s: number, o: any) => s + (o.subtotal || 0), 0)

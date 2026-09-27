@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { BarChart3, TrendingUp, ShoppingCart, Percent, DollarSign } from 'lucide-react'
+import { isCancelledOrRefunded, isRefundedOrder } from './orderStatus'
 
 interface Props {
   orders: any[]
@@ -7,9 +8,9 @@ interface Props {
 
 export function FinancialCommandCenter({ orders }: Props) {
   const data = useMemo(() => {
-    const completed = orders.filter((o: any) => !['cancelled', 'refunded'].includes(o.status))
+    const completed = orders.filter((o: any) => !isCancelledOrRefunded(o))
     const cancelled = orders.filter((o: any) => o.status === 'cancelled')
-    const refunded = orders.filter((o: any) => o.status === 'refunded')
+    const refunded = orders.filter((o: any) => isRefundedOrder(o))
 
     const totalRevenue = completed.reduce((s: number, o: any) => s + (o.total || 0), 0)
     const avgOrderValue = completed.length > 0 ? totalRevenue / completed.length : 0

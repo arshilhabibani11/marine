@@ -10,7 +10,7 @@ interface Props {
 export function RestockPredictor({ products, orders }: Props) {
   const recommendations = useMemo(() => {
     const lowStock = products.filter(p => {
-      const threshold = p.lowStockThreshold || 5
+      const threshold = p.lowStockThreshold || 10
       return (p.stockCount || 0) <= threshold
     })
 
@@ -41,7 +41,7 @@ export function RestockPredictor({ products, orders }: Props) {
         sku: p.sku,
         brand: p.brand?.name || p.brand || '—',
         stockCount: p.stockCount || 0,
-        lowStockThreshold: p.lowStockThreshold || 5,
+        lowStockThreshold: p.lowStockThreshold || 10,
         avgDailySales: Math.round(avgDailySales * 100) / 100,
         daysUntilStockout,
         reorderQty,

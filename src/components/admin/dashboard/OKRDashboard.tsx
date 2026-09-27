@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect } from 'react'
 import { Target, Plus, Trash2, CheckCircle, Circle, Pencil } from 'lucide-react'
+import { isCancelledOrRefunded } from './orderStatus'
 
 interface KeyResult {
   id: string
@@ -77,7 +78,7 @@ export function OKRDashboard({ orders, products, customers }: Props) {
   // Auto-populate current values from data
   const populated = useMemo(() => {
     const totalRevenue = orders.filter((o: any) => o.status !== 'cancelled').reduce((s: number, o: any) => s + (o.total || 0), 0)
-    const completedOrders = orders.filter((o: any) => !['cancelled', 'refunded'].includes(o.status))
+    const completedOrders = orders.filter((o: any) => !isCancelledOrRefunded(o))
     const aov = completedOrders.length > 0 ? totalRevenue / completedOrders.length : 0
 
     return objectives.map(obj => ({

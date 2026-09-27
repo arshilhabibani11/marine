@@ -8,6 +8,7 @@ interface AdminProductFiltersProps {
   onToggleFilters: () => void
   activeFilterCount: number
   onExportCsv: () => void
+  exporting?: boolean
 
   // Filter values & setters
   filterCategory: string
@@ -35,7 +36,7 @@ interface AdminProductFiltersProps {
 
 export function AdminProductFilters({
   search, onSearchChange, onPageReset,
-  showFilters, onToggleFilters, activeFilterCount, onExportCsv,
+  showFilters, onToggleFilters, activeFilterCount, onExportCsv, exporting,
   filterCategory, onFilterCategoryChange,
   filterBrand, onFilterBrandChange,
   filterCondition, onFilterConditionChange,
@@ -77,9 +78,10 @@ export function AdminProductFilters({
         </button>
         <button
           onClick={onExportCsv}
-          className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-2.5 text-xs font-bold text-[var(--text-secondary)] transition-all hover:border-[var(--accent-teal)] hover:text-[var(--accent-teal)]"
+          disabled={exporting}
+          className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-2.5 text-xs font-bold text-[var(--text-secondary)] transition-all hover:border-[var(--accent-teal)] hover:text-[var(--accent-teal)] disabled:opacity-50"
         >
-          <Download size={14} /> Export CSV
+          <Download size={14} /> {exporting ? 'Exporting...' : 'Export CSV'}
         </button>
       </div>
 

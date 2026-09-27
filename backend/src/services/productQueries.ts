@@ -1,5 +1,5 @@
 import { prisma } from '../server.js'
-import { getEffectivePrice, isOnSale, paginationParams, paginationResponse } from '../utils/helpers.js'
+import { getEffectivePrice, isOnSale, isProductInStock, paginationParams, paginationResponse } from '../utils/helpers.js'
 import { productAdminInclude, productInclude } from '../utils/prisma-helpers.js'
 
 export interface ProductFilters {
@@ -16,9 +16,11 @@ export interface ProductFilters {
   isNewArrival?: boolean
   isFeatured?: boolean
   makeOffer?: boolean
+  onSaleAdmin?: boolean
   priceMin?: number
   priceMax?: number
   sort?: string
+  order?: string
   page?: number
   limit?: number
 }
@@ -34,6 +36,9 @@ export async function listProducts(params: ProductFilters) {
   if (params.condition) where.condition = params.condition
   if (params.brandId) where.brandId = params.brandId
   if (params.categoryId) where.categoryId = params.categoryId
+  // Name fallbacks used by the admin UI while the brand/category id map loads.
+  if (!params.brandId && params.brand) where.brand = { name: { equals: params.brand, mode: 'insensitive' } }
+  if (!params.categoryId && params.category) where.category = { name: { equals: params.category, mode: 'insensitive' } }
   if (params.search) {
     where.OR = [
       { name: { contains: params.search, mode: 'insensitive' } },
@@ -42,19 +47,38 @@ export async function listProducts(params: ProductFilters) {
   }
   if (params.isNewArrival) where.isNewArrival = true
   if (params.isFeatured) where.isFeatured = true
+  if (params.onSaleAdmin) where.salePrice = { not: null }
+
+  // Server-side sorting so ordering is correct across the whole result set,
+  // not just the current page. Falls back to newest-first for unknown keys.
+  const dir: 'asc' | 'desc' = params.order === 'desc' ? 'desc' : 'asc'
+  let orderBy: any = { createdAt: 'desc' }
+  switch (params.sort) {
+    case 'name': orderBy = { name: dir }; break
+    case 'sku': orderBy = { sku: dir }; break
+    case 'brand': orderBy = { brand: { name: dir } }; break
+    case 'category': orderBy = { category: { name: dir } }; break
+    case 'price': orderBy = { regularPrice: dir }; break
+    case 'stock': orderBy = { stockCount: dir }; break
+    case 'condition': orderBy = { condition: dir }; break
+    case 'status': orderBy = { status: dir }; break
+  }
 
   const [products, total] = await Promise.all([
     prisma.product.findMany({
       where,
       include: productAdminInclude,
-      orderBy: { createdAt: 'desc' },
+      orderBy,
       skip,
       take: limit,
     }),
     prisma.product.count({ where }),
   ])
 
-  return { products, pagination: paginationResponse(total, page, limit) }
+  return {
+    products: products.map(p => ({ ...p, price: getEffectivePrice(p), onSale: isOnSale(p) })),
+    pagination: paginationResponse(total, page, limit),
+  }
 }
 
 // ─── Queries (Storefront) ──────────────────────────────────────
@@ -106,7 +130,7 @@ export async function listStorefrontProducts(params: ProductFilters) {
   ])
 
   return {
-    products: products.map(p => ({ ...p, price: getEffectivePrice(p), onSale: isOnSale(p), inStock: p.stockCount > 0 })),
+    products: products.map(p => ({ ...p, price: getEffectivePrice(p), onSale: isOnSale(p), inStock: isProductInStock(p) })),
     pagination: paginationResponse(total, page, limit),
   }
 }
@@ -117,7 +141,7 @@ export async function getStorefrontProduct(id: string) {
     include: productInclude,
   })
   if (!product) return null
-  return { ...product, price: getEffectivePrice(product), onSale: isOnSale(product), inStock: product.stockCount > 0 }
+  return { ...product, price: getEffectivePrice(product), onSale: isOnSale(product), inStock: isProductInStock(product) }
 }
 
 export async function getRelatedProducts(id: string, categoryId: string | null, brandId: string | null, take = 4) {
@@ -134,7 +158,7 @@ export async function getRelatedProducts(id: string, categoryId: string | null, 
     take,
     orderBy: { createdAt: 'desc' },
   })
-  return related.map(p => ({ ...p, price: getEffectivePrice(p), onSale: isOnSale(p), inStock: p.stockCount > 0 }))
+  return related.map(p => ({ ...p, price: getEffectivePrice(p), onSale: isOnSale(p), inStock: isProductInStock(p) }))
 }
 
 export async function getFeaturedProducts(take = 8) {

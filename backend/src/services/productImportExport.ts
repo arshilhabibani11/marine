@@ -28,7 +28,7 @@ export async function importProducts(rows: any[], actor: AuthUser, ipAddress = '
         data: {
           name: row.name, slug, sku: row.sku,
           brandId: row.brandId || null, categoryId: row.categoryId || null,
-          status: row.status || 'draft', condition: row.condition || 'used', availability: row.availability || 'in-stock',
+          status: row.status || 'published', condition: row.condition || 'used', availability: row.availability || 'in-stock',
           shortDescription: row.shortDescription || null, description: row.description || null,
           regularPrice: Number(row.regularPrice) || 0, salePrice: row.salePrice ? Number(row.salePrice) : null,
           stockCount: Number(row.stockCount) || 0, currency: row.currency || 'USD',

@@ -27,6 +27,28 @@ const quickActions = [
   { label: 'View Orders', icon: <ShoppingCart size={14} />, to: '/admin/orders' },
 ]
 
+// Alert entityType → the admin route that lists those records. Naive
+// `${entityType}s` produced dead links for contact_message/store_settings and
+// mis-pluralised category/industry.
+const ENTITY_ADMIN_PATH: Record<string, string> = {
+  product: '/admin/products',
+  order: '/admin/orders',
+  rfq: '/admin/rfqs',
+  offer: '/admin/offers',
+  customer: '/admin/customers',
+  contact_message: '/admin/messages',
+  message: '/admin/messages',
+  admin_user: '/admin/users',
+  brand: '/admin/brands',
+  category: '/admin/categories',
+  industry: '/admin/industries',
+  store_settings: '/admin/settings',
+}
+
+function entityHref(entityType?: string): string {
+  return (entityType && ENTITY_ADMIN_PATH[entityType]) || '/admin/audit-log'
+}
+
 export default function AdminDashboard() {
   const { stats: dashboard, activity, alerts: dashboardAlerts, loading } = useAdminDashboard()
 
@@ -52,7 +74,7 @@ export default function AdminDashboard() {
       ? [{
           type: 'info' as const,
           icon: <TrendingDown size={16} />,
-          message: `${dashboard.lowStockProducts.length} products are low on stock (≤5 units)`,
+          message: `${dashboard.lowStockProducts.length} products are low on stock (at or below their low-stock threshold)`,
           link: '/admin/products?filter=low-stock',
         }]
       : []),
@@ -61,7 +83,7 @@ export default function AdminDashboard() {
           type: a.type as 'info' | 'danger' | 'warning',
           icon: a.type === 'danger' ? <AlertTriangle size={16} /> : <Clock size={16} />,
           message: a.message,
-          link: `/admin/${a.entityType || ''}s`,
+          link: entityHref(a.entityType),
         }))
       : []),
   ]

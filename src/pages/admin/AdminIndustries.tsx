@@ -117,7 +117,7 @@ export default function AdminIndustries() {
     const ind = allIndustries.find((i) => i.id === industryId)
     if (!ind) return
     setEditingIndustry(industryId)
-    setForm({ name: ind.name, slug: ind.id, icon: ind.icon, description: ind.description, painPoints: [...ind.painPoints] })
+    setForm({ name: ind.name, slug: ind.slug || ind.id, icon: ind.icon, description: ind.description, painPoints: [...ind.painPoints] })
     setShowModal(true)
   }
 
@@ -249,7 +249,7 @@ export default function AdminIndustries() {
                       <h3 className="font-display text-sm font-bold text-[var(--text-primary)]">
                         {ind.name}
                       </h3>
-                      <p className="text-[0.625rem] text-[var(--text-muted)] font-mono">{ind.id}</p>
+                      <p className="text-[0.625rem] text-[var(--text-muted)] font-mono">{ind.slug || ind.id}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -261,7 +261,7 @@ export default function AdminIndustries() {
                       <Pencil size={12} />
                     </button>
                     <a
-                      href={`/industries#${ind.id}`}
+                      href={`/industries#${ind.slug || ind.id}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--accent-blue)] hover:bg-[var(--accent-blue)]/10 transition-colors"

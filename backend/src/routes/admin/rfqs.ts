@@ -49,6 +49,12 @@ router.get('/', asyncHandler(async (req, res) => {
   sendSuccess(res, result)
 }))
 
+// ─── List Assignable Admin Users ────────────────────────────
+// Must be declared before '/:id' so it isn't captured as an RFQ id.
+router.get('/assignees', requireRole('sales-agent'), asyncHandler(async (_req, res) => {
+  sendSuccess(res, await rfqService.listAssignableAdmins())
+}))
+
 // ─── Get RFQ Detail ─────────────────────────────────────────
 router.get('/:id', asyncHandler(async (req, res) => {
   try {

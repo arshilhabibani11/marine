@@ -1,5 +1,6 @@
 import { prisma } from '../server.js'
 import { logAudit } from '../utils/audit.js'
+import { invalidateCachePath } from '../middleware/cacheGet.js'
 import type { Prisma } from '@prisma/client'
 import type { AuthUser } from '../middleware/auth.js'
 
@@ -19,10 +20,13 @@ export async function getAllSettings() {
 export async function getPublicSettings() {
   const PUBLIC_KEYS = [
     'site.companyName', 'site.tagline', 'site.email', 'site.phone',
-    'site.address', 'site.city', 'site.country', 'site.currency',
+    'site.address', 'site.city', 'site.country', 'site.currency', 'site.timezone',
     'site.seoTitle', 'site.seoDescription', 'site.whatsappNumber',
+    'site.googleAnalyticsId',
     'site.rfqEmail', 'site.emergencyEmail',
     'checkout.shippingCost', 'checkout.taxRate', 'checkout.freeShippingThreshold',
+    // Admin-configured shipping zones and payment methods — consumed by checkout.
+    'store.shippingZones', 'store.paymentMethods',
   ]
 
   const settings = await prisma.storeSetting.findMany({ where: { key: { in: PUBLIC_KEYS } } })
@@ -41,6 +45,31 @@ export async function getPublicSettings() {
   return { settings: result }
 }
 
+// Parses the admin `store.notifications` JSON blob. Returns {} when the admin
+// has never saved it, so callers can treat "unset" as "notify" (the historic
+// behaviour before these prefs were honoured).
+export async function getNotificationPrefs(): Promise<Record<string, unknown>> {
+  const setting = await prisma.storeSetting.findUnique({ where: { key: 'store.notifications' } })
+  let value: unknown = setting?.value
+  if (typeof value === 'string') {
+    try { value = JSON.parse(value) } catch { value = null }
+  }
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+}
+
+/** Whether the given notification key is enabled (unset ⇒ true). */
+export async function shouldNotify(key: string): Promise<boolean> {
+  const prefs = await getNotificationPrefs()
+  return prefs[key] === undefined ? true : Boolean(prefs[key])
+}
+
+/** Admin-configured store timezone (site.timezone), or undefined when unset. */
+export async function getStoreTimezone(): Promise<string | undefined> {
+  const setting = await prisma.storeSetting.findUnique({ where: { key: 'site.timezone' } })
+  const value = setting?.value
+  return typeof value === 'string' && value ? value : undefined
+}
+
 // ─── Mutations ────────────────────────────────────────────────
 
 export async function updateSettings(settings: Record<string, unknown>, actor: AuthUser, ipAddress = '') {
@@ -55,6 +84,9 @@ export async function updateSettings(settings: Record<string, unknown>, actor: A
     )
   }
   await Promise.all(updates)
+  // Settings feed the cached public storefront response — drop it so the next
+  // request reflects the change immediately instead of waiting out the 5-min TTL.
+  invalidateCachePath('/storefront/settings')
   await logAudit({ actor, action: 'settings.update', entityType: 'store_settings', entityName: Object.keys(settings).join(', '), ipAddress })
   return { message: 'Settings updated', count: updates.length }
 }

@@ -1,5 +1,15 @@
 import { useState, useEffect } from 'react'
 import { storefront } from '../lib/api'
+import { parseShippingZones, type ShippingZone } from '../lib/shipping'
+
+export interface PaymentMethodSetting {
+  id?: string
+  name?: string
+  type?: string
+  enabled?: boolean
+  testMode?: boolean
+  config?: Record<string, string>
+}
 
 interface StoreSettings {
   whatsappNumber: string
@@ -9,6 +19,9 @@ interface StoreSettings {
   rfqEmail: string
   emergencyEmail: string
   phoneNumber: string
+  googleAnalyticsId: string
+  shippingZones: ShippingZone[]
+  paymentMethods: PaymentMethodSetting[]
 }
 
 const DEFAULTS: StoreSettings = {
@@ -19,6 +32,22 @@ const DEFAULTS: StoreSettings = {
   rfqEmail: 'sales@alkatraders.co',
   emergencyEmail: 'sales@alkatraders.co',
   phoneNumber: '+918799095041',
+  googleAnalyticsId: '',
+  shippingZones: [],
+  paymentMethods: [],
+}
+
+/** Same shape the admin saves under `store.paymentMethods` (a JSON string). */
+function parsePaymentMethods(raw: unknown): PaymentMethodSetting[] {
+  let value = raw
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value)
+    } catch {
+      return []
+    }
+  }
+  return Array.isArray(value) ? (value as PaymentMethodSetting[]) : []
 }
 
 let cachedSettings: StoreSettings = { ...DEFAULTS }
@@ -44,6 +73,9 @@ async function fetchSettingsAndNotify(): Promise<StoreSettings> {
         rfqEmail: String(s['site.rfqEmail'] || DEFAULTS.rfqEmail),
         emergencyEmail: String(s['site.emergencyEmail'] || DEFAULTS.emergencyEmail),
         phoneNumber: String(s['site.phoneNumber'] || DEFAULTS.phoneNumber),
+        googleAnalyticsId: String(s['site.googleAnalyticsId'] || DEFAULTS.googleAnalyticsId),
+        shippingZones: parseShippingZones(s['store.shippingZones']),
+        paymentMethods: parsePaymentMethods(s['store.paymentMethods']),
       }
       notifySubscribers(cachedSettings)
       return cachedSettings

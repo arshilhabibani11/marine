@@ -7,12 +7,26 @@ import type { AuthUser } from '../middleware/auth.js'
 
 // ─── Queries ──────────────────────────────────────────────────
 
-export async function listOffers(params: { status?: string; productId?: string; page?: number; limit?: number }) {
+export async function listOffers(params: { status?: string; productId?: string; search?: string; page?: number; limit?: number }) {
   const { page, limit, skip } = paginationParams(params.page, params.limit)
 
-  const where: Record<string, unknown> = {}
+  const where: any = {}
   if (params.status) where.status = params.status
   if (params.productId) where.productId = params.productId
+  if (params.search) {
+    const q = { contains: params.search, mode: 'insensitive' } as const
+    where.OR = [
+      { offerNumber: q },
+      { customerEmail: q },
+      { message: q },
+      { adminNotes: q },
+      { customer: { name: q } },
+      { customer: { company: q } },
+      { product: { name: q } },
+      { product: { sku: q } },
+      { rfq: { rfqNumber: q } },
+    ]
+  }
 
   const [offers, total] = await Promise.all([
     prisma.offer.findMany({
@@ -20,6 +34,7 @@ export async function listOffers(params: { status?: string; productId?: string; 
       include: {
         product: { select: { id: true, name: true, sku: true, regularPrice: true } },
         rfq: { select: { id: true, rfqNumber: true } },
+        customer: { select: { id: true, name: true, company: true, country: true } },
       },
       orderBy: { createdAt: 'desc' },
       skip, take: limit,
@@ -30,12 +45,51 @@ export async function listOffers(params: { status?: string; productId?: string; 
   return { offers, pagination: paginationResponse(total, page, limit) }
 }
 
+function csvCell(value: unknown): string {
+  return `"${String(value ?? '').replace(/"/g, '""')}"`
+}
+
+export async function exportOffersCsv() {
+  const offers = await prisma.offer.findMany({
+    include: {
+      product: { select: { name: true, sku: true } },
+      rfq: { select: { rfqNumber: true } },
+      customer: { select: { name: true, company: true, country: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  })
+
+  const headers = [
+    'Offer Number', 'RFQ', 'Customer', 'Email', 'Company', 'Country', 'Product', 'SKU',
+    'Quantity', 'Offered Price', 'Counter Price', 'Status', 'Created', 'Expires',
+  ]
+  const rows = offers.map((o) => [
+    o.offerNumber,
+    o.rfq?.rfqNumber || '',
+    o.customer?.name || '',
+    o.customerEmail,
+    o.customer?.company || '',
+    o.customer?.country || '',
+    o.product?.name || '',
+    o.product?.sku || '',
+    o.quantity,
+    Number(o.offeredPrice),
+    o.counterPrice != null ? Number(o.counterPrice) : '',
+    o.status,
+    o.createdAt.toISOString().slice(0, 10),
+    o.expiresAt ? o.expiresAt.toISOString().slice(0, 10) : '',
+  ])
+
+  return [headers.map(csvCell).join(','), ...rows.map((r) => r.map(csvCell).join(','))].join('\n')
+}
+
 export async function getOffer(id: string) {
   const offer = await prisma.offer.findUnique({
     where: { id },
     include: {
       product: { select: { id: true, name: true, sku: true, regularPrice: true, salePrice: true, stockCount: true } },
       rfq: { select: { id: true, rfqNumber: true } },
+      customer: { select: { id: true, name: true, company: true, country: true } },
     },
   })
   if (!offer) throw Object.assign(new Error('Offer not found'), { status: 404 })

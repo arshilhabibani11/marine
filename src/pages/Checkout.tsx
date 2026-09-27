@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { usePayPalScriptReducer } from '@paypal/react-paypal-js'
@@ -7,6 +7,7 @@ import { Truck, Shield } from 'lucide-react'
 import { useStore, type SkippedCartItem } from '../store/useStore'
 import { storefront } from '../lib/api'
 import { useStoreSettings } from '../hooks/useStoreSettings'
+import { calcShippingCost } from '../lib/shipping'
 import { SEO } from '../components/seo/SEO'
 import { CheckoutSuccess } from './checkout/CheckoutSuccess'
 import { CheckoutShipping } from './checkout/CheckoutShipping'
@@ -69,10 +70,43 @@ export default function Checkout() {
 
   const settings = useStoreSettings()
   const subtotal = getCartTotal()
-  // Display-only estimate — the server recalculates and enforces the real totals.
-  const shippingCost = subtotal >= settings.freeShippingThreshold ? 0 : settings.shippingCost
+  // Display-only estimate — the server recalculates and enforces the real
+  // totals. Shipping is priced from the admin-configured zones for the chosen
+  // country, falling back to the flat rate when no zone matches.
+  const shippingCost = calcShippingCost({
+    subtotal,
+    country: shipping.country,
+    zones: settings.shippingZones,
+    baseShippingCost: settings.shippingCost,
+    freeShippingThreshold: settings.freeShippingThreshold,
+  })
   const tax = Math.round(subtotal * settings.taxRate * 100) / 100
   const total = subtotal + shippingCost + tax
+
+  // Only offer payment methods the admin has enabled in Settings. L/C is an
+  // offline arrangement, so it is presented alongside bank transfer.
+  const availablePaymentMethods = useMemo(() => {
+    const ids = new Set<string>()
+    for (const pm of settings.paymentMethods) {
+      if (pm.enabled === false) continue
+      if (pm.type === 'paypal') ids.add('paypal')
+      else if (pm.type === 'bank' || pm.type === 'lc') ids.add('bank-transfer')
+    }
+    // Never leave the customer with no way to pay: if no methods are configured
+    // or every one is disabled, fall back to the two built-in methods.
+    if (ids.size === 0) {
+      ids.add('bank-transfer')
+      ids.add('paypal')
+    }
+    return ids
+  }, [settings.paymentMethods])
+
+  // Keep the selection valid as settings load / change.
+  useEffect(() => {
+    if (!availablePaymentMethods.has(paymentMethod)) {
+      setPaymentMethod(availablePaymentMethods.has('bank-transfer') ? 'bank-transfer' : 'paypal')
+    }
+  }, [availablePaymentMethods, paymentMethod])
 
   const validateShipping = () => {
     const e: Record<string, boolean> = {}
@@ -347,6 +381,7 @@ export default function Checkout() {
             <CheckoutPayment
               paymentMethod={paymentMethod}
               setPaymentMethod={setPaymentMethod}
+              availableMethods={Array.from(availablePaymentMethods)}
               goToStep={goToStep}
             />
           )}

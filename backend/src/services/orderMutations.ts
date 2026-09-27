@@ -6,6 +6,8 @@ import { sendOrderShipped, sendOrderCancelled, sendOrderConfirmation } from './e
 import { escapeHtml } from '../utils/html-escape.js'
 import logger from '../utils/logger.js'
 import { processPaypalRefund } from '../utils/paypal.js'
+import { calcShippingCost, parseShippingZones } from '../utils/shipping.js'
+import { getStoreTimezone } from './settingsService.js'
 import type { AuthUser } from '../middleware/auth.js'
 
 const STATUS_FLOW = ['pending', 'confirmed', 'paid', 'processing', 'packed', 'shipped', 'delivered']
@@ -59,7 +61,7 @@ export async function createOrder(input: CreateOrderInput) {
       skippedItems.push({ productId: item.productId, quantity: item.quantity })
       continue
     }
-    if (product.stockCount < item.quantity) {
+    if (product.availability === 'out-of-stock' || product.stockCount < item.quantity) {
       throw Object.assign(new Error(`Insufficient stock for ${product.name}`), { status: 400 })
     }
     const price = Number(product.salePrice && Number(product.salePrice) < Number(product.regularPrice) ? product.salePrice : product.regularPrice)
@@ -79,17 +81,26 @@ export async function createOrder(input: CreateOrderInput) {
     )
   }
 
-  const [shippingCostSetting, taxRateSetting, freeShippingThresholdSetting] = await Promise.all([
+  const [shippingCostSetting, taxRateSetting, freeShippingThresholdSetting, shippingZonesSetting] = await Promise.all([
     prisma.storeSetting.findUnique({ where: { key: 'checkout.shippingCost' } }),
     prisma.storeSetting.findUnique({ where: { key: 'checkout.taxRate' } }),
     prisma.storeSetting.findUnique({ where: { key: 'checkout.freeShippingThreshold' } }),
+    prisma.storeSetting.findUnique({ where: { key: 'store.shippingZones' } }),
   ])
 
-  // Free shipping applies when the subtotal meets the configured threshold.
-  // The server always calculates this — the client can never dictate shipping.
+  // Shipping is priced by the customer's country from the admin-configured
+  // shipping zones; when no zone matches (or none are configured) it falls back
+  // to the flat checkout.shippingCost + free-shipping threshold. The server
+  // always calculates this — the client can never dictate shipping.
   const baseShippingCost = Number(shippingCostSetting?.value) || Number(process.env.DEFAULT_SHIPPING_COST) || 25
   const freeShippingThreshold = Number(freeShippingThresholdSetting?.value) || 100
-  const shippingCost = subtotal >= freeShippingThreshold ? 0 : baseShippingCost
+  const shippingCost = calcShippingCost({
+    subtotal,
+    country: shipping.country,
+    zones: parseShippingZones(shippingZonesSetting?.value),
+    baseShippingCost,
+    freeShippingThreshold,
+  })
   const taxRate = Number(taxRateSetting?.value) || Number(process.env.DEFAULT_TAX_RATE) || 0.08
   const tax = Math.round(subtotal * taxRate * 100) / 100
   const total = subtotal + shippingCost + tax
@@ -303,6 +314,10 @@ export async function generateInvoiceHtml(id: string) {
     </tr>`
   ).join('')
 
+  // Format the invoice date in the admin-configured store timezone (site.timezone).
+  const timezone = await getStoreTimezone().catch(() => undefined)
+  const invoiceDate = order.createdAt.toLocaleDateString('en-US', timezone ? { timeZone: timezone } : undefined)
+
   const customer = (order as Record<string, unknown>).customer as Record<string, string> || {}
   const shipping = {
     fullName: order.shippingFullName || '',
@@ -314,7 +329,7 @@ export async function generateInvoiceHtml(id: string) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice ${escapeHtml(order.orderNumber)}</title></head><body>
     <div style="display:flex;justify-content:space-between;margin-bottom:30px">
       <div><h1 style="margin:0;color:#0EA5E9">ALKA TRADERS</h1><p style="color:#666;font-size:13px">Marine & Industrial Equipment</p></div>
-      <div style="text-align:right"><h2 style="margin:0">INVOICE</h2><p style="font-family:monospace;font-size:14px;color:#666">#${order.orderNumber}</p><p style="font-size:13px;color:#666">Date: ${new Date(order.createdAt).toLocaleDateString()}</p></div>
+      <div style="text-align:right"><h2 style="margin:0">INVOICE</h2><p style="font-family:monospace;font-size:14px;color:#666">#${order.orderNumber}</p><p style="font-size:13px;color:#666">Date: ${invoiceDate}</p></div>
     </div>
     <div style="display:flex;gap:40px;margin-bottom:30px">
       <div style="flex:1"><h3 style="font-size:12px;text-transform:uppercase;color:#999;margin-bottom:8px">Bill To</h3><p style="font-size:13px"><strong>${escapeHtml(customer.name || shipping.fullName || 'N/A')}</strong></p><p style="font-size:13px;color:#666">${escapeHtml(customer.email || '')}</p><p style="font-size:13px;color:#666">${escapeHtml(shipping.addressLine1 || '')}${shipping.city ? ', ' + escapeHtml(shipping.city) : ''}${shipping.country ? ', ' + escapeHtml(shipping.country) : ''}</p></div>

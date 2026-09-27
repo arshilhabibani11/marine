@@ -5,6 +5,7 @@ import {
 import type { Order } from './types'
 import { statusConfig, getNextStatuses, formatDate, formatDateTime } from './types'
 import { getAdminToken } from '../../../lib/api'
+import { API_BASE } from '../../../lib/api/core'
 import { useToast } from '../../../components/admin/toast-context'
 
 interface OrderDetailSlideOverProps {
@@ -32,7 +33,7 @@ export function OrderDetailSlideOver({
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface)] px-6 py-4">
           <div>
             <h2 className="font-display text-lg font-bold text-[var(--text-primary)]">
-              {order.id}
+              {order.orderNumber}
             </h2>
             <p className="text-xs text-[var(--text-muted)] mt-0.5">
               {formatDate(order.createdAt)} · {order.company}
@@ -216,7 +217,7 @@ export function OrderDetailSlideOver({
               const orderId = realOrder?.id || order.id
               try {
                 const token = getAdminToken()
-                const res = await fetch(`/api/admin/orders/${orderId}/invoice`, {
+                const res = await fetch(`${API_BASE}/admin/orders/${orderId}/invoice`, {
                   headers: token ? { Authorization: `Bearer ${token}` } : undefined,
                   credentials: 'include',
                 })

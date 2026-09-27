@@ -7,11 +7,19 @@ import type { AuthUser } from '../middleware/auth.js'
 
 // ─── Queries ──────────────────────────────────────────────────
 
-export async function listMessages(params: { status?: string; search?: string; page?: number; limit?: number }) {
+export async function listMessages(params: { status?: string; search?: string; folder?: string; page?: number; limit?: number }) {
   const { page, limit, skip } = paginationParams(params.page, params.limit)
 
-  const where: Record<string, unknown> = {}
+  const where: any = {}
   if (params.status) where.status = params.status
+  // Folder is a higher-level view over `status`: inbox = new/read,
+  // sent = replied (compose/reply outcomes), trash = soft-deleted.
+  if (params.folder === 'inbox') where.status = { in: ['new', 'read'] }
+  else if (params.folder === 'sent') where.status = { in: ['replied'] }
+  else if (params.folder === 'trash') where.status = 'trashed'
+  else if (params.folder === 'starred') where.status = { not: 'trashed' }
+  else where.status = { not: 'trashed' }
+  if (params.folder === 'starred') where.isStarred = true
   if (params.search) {
     where.OR = [
       { name: { contains: params.search, mode: 'insensitive' } },
@@ -41,7 +49,7 @@ export async function getMessage(id: string) {
   })
   if (!message) throw Object.assign(new Error('Message not found'), { status: 404 })
 
-  // Auto-mark as read if new
+  // Auto-mark as read if new (never resurrect a trashed message)
   if (message.status === 'new') {
     await prisma.contactMessage.update({ where: { id: message.id }, data: { status: 'read' } })
     message.status = 'read'
@@ -52,19 +60,28 @@ export async function getMessage(id: string) {
 
 // ─── Mutations ────────────────────────────────────────────────
 
-export async function composeMessage(data: { name: string; email: string; subject?: string; message: string }, actor: AuthUser, ipAddress = '') {
+export async function composeMessage(data: { to: string; subject: string; message: string }, actor: AuthUser, ipAddress = '') {
   const message = await prisma.contactMessage.create({
     data: {
-      name: data.name,
-      email: data.email,
-      subject: data.subject || 'Internal message',
+      name: data.to,
+      email: data.to,
+      subject: data.subject,
       message: data.message,
-      status: 'new',
+      // Compose is an outbound message, so it lands in the Sent folder.
+      status: 'replied',
       source: 'admin-compose',
     },
   })
 
-  await logAudit({ actor, action: 'message.create', entityType: 'contact_message', entityId: message.id, entityName: message.subject || 'Compose', ipAddress })
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:0;background:#f4f6f9;font-family:'Segoe UI',Tahoma,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f9;padding:32px 0;"><tr><td align="center"><table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);"><tr><td style="background:linear-gradient(135deg,#0a1628,#1a2d4a);padding:24px 32px;text-align:center;"><h1 style="margin:0;color:#fff;font-size:20px;font-weight:700;">⚓ Alka Traders</h1></td></tr><tr><td style="padding:32px;"><h2 style="margin:0 0 16px;color:#1e293b;font-size:20px;">${data.subject}</h2><div style="background:#f8fafc;border-radius:8px;padding:16px;color:#1e293b;font-size:14px;line-height:1.6;">${data.message}</div></td></tr></table></td></tr></table></body></html>`
+
+  queueEmail({
+    to: data.to,
+    subject: data.subject,
+    html,
+  }).catch(err => logger.error({ err }, 'Compose email failed'))
+
+  await logAudit({ actor, action: 'message.compose', entityType: 'contact_message', entityId: message.id, entityName: data.subject, ipAddress })
   return { message }
 }
 
@@ -77,6 +94,15 @@ export async function markAsRead(id: string, actor: AuthUser, ipAddress = '') {
   return { message: updated }
 }
 
+export async function starMessage(id: string, starred: boolean, actor: AuthUser, ipAddress = '') {
+  const message = await prisma.contactMessage.findUnique({ where: { id } })
+  if (!message) throw Object.assign(new Error('Message not found'), { status: 404 })
+
+  const updated = await prisma.contactMessage.update({ where: { id }, data: { isStarred: starred } })
+  await logAudit({ actor, action: starred ? 'message.star' : 'message.unstar', entityType: 'contact_message', entityId: message.id, entityName: message.subject || message.name, ipAddress })
+  return { message: updated }
+}
+
 export async function archiveMessage(id: string, actor: AuthUser, ipAddress = '') {
   const message = await prisma.contactMessage.findUnique({ where: { id } })
   if (!message) throw Object.assign(new Error('Message not found'), { status: 404 })
@@ -86,7 +112,29 @@ export async function archiveMessage(id: string, actor: AuthUser, ipAddress = ''
   return { message: updated }
 }
 
+// Soft delete — moves the message to Trash so it can be restored.
 export async function deleteMessage(id: string, actor: AuthUser, ipAddress = '') {
+  const message = await prisma.contactMessage.findUnique({ where: { id } })
+  if (!message) throw Object.assign(new Error('Message not found'), { status: 404 })
+
+  const updated = await prisma.contactMessage.update({ where: { id }, data: { status: 'trashed', isStarred: false } })
+  await logAudit({ actor, action: 'message.trash', entityType: 'contact_message', entityId: message.id, entityName: message.subject || message.name, ipAddress })
+  return { message: updated }
+}
+
+// Restore a trashed message back to the inbox.
+export async function restoreMessage(id: string, actor: AuthUser, ipAddress = '') {
+  const message = await prisma.contactMessage.findUnique({ where: { id } })
+  if (!message) throw Object.assign(new Error('Message not found'), { status: 404 })
+  if (message.status !== 'trashed') throw Object.assign(new Error('Message is not in trash'), { status: 400 })
+
+  const updated = await prisma.contactMessage.update({ where: { id }, data: { status: 'read' } })
+  await logAudit({ actor, action: 'message.restore', entityType: 'contact_message', entityId: message.id, entityName: message.subject || message.name, ipAddress })
+  return { message: updated }
+}
+
+// Permanent delete — only reachable from the Trash folder.
+export async function destroyMessage(id: string, actor: AuthUser, ipAddress = '') {
   const message = await prisma.contactMessage.findUnique({ where: { id } })
   if (!message) throw Object.assign(new Error('Message not found'), { status: 404 })
 

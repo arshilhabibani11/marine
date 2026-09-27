@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { Shield, AlertTriangle, UserX, Eye, Clock } from 'lucide-react'
+import { orderCustomerEmail } from './orderFields'
 
 interface Props {
   orders: any[]
@@ -14,7 +15,7 @@ export function SecurityCommandCenter({ orders, rfqs }: Props) {
     // Analyze order patterns for suspicious activity
     const ordersByEmail: Record<string, { count: number; totalValue: number; timestamps: number[] }> = {}
     for (const order of orders) {
-      const email = order.email || order.customerEmail || ''
+      const email = orderCustomerEmail(order)
       if (!email) continue
       if (!ordersByEmail[email]) ordersByEmail[email] = { count: 0, totalValue: 0, timestamps: [] }
       ordersByEmail[email].count++
@@ -55,7 +56,7 @@ export function SecurityCommandCenter({ orders, rfqs }: Props) {
 
       // Many cancelled orders
       const cancelledCount = orders.filter((o: any) =>
-        (o.email || o.customerEmail) === email && o.status === 'cancelled'
+        orderCustomerEmail(o) === email && o.status === 'cancelled'
       ).length
       if (cancelledCount >= 3) {
         suspicious.push({

@@ -83,3 +83,9 @@ export function isOnSale(product: {
   const regular = Number(product.regularPrice)
   return effective < regular
 }
+
+/** A product is buyable only when it has units AND is not explicitly marked
+ * out of stock via its availability. */
+export function isProductInStock(product: { stockCount: number; availability: string }): boolean {
+  return product.availability !== 'out-of-stock' && product.stockCount > 0
+}

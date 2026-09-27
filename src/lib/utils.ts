@@ -161,6 +161,27 @@ export function isSaleWindowValid(startsAt: string, endsAt: string): boolean {
 }
 
 /**
+ * Encode rows as CSV, quoting every cell and escaping embedded quotes.
+ */
+export function toCsv(headers: string[], rows: Array<Array<string | number | null | undefined>>): string {
+  const cell = (v: string | number | null | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`
+  return [headers.map(cell).join(','), ...rows.map((r) => r.map(cell).join(','))].join('\n')
+}
+
+/**
+ * Trigger a browser download of CSV text under the given filename.
+ */
+export function downloadCsv(content: string, filename: string): void {
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+/**
  * Currency symbol prefix for the given ISO currency code.
  */
 export function currencyPrefix(currency: string): string {

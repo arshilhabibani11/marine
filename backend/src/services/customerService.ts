@@ -16,6 +16,9 @@ export async function listCustomers(params: { status?: string; search?: string; 
       { name: { contains: params.search, mode: 'insensitive' } },
       { email: { contains: params.search, mode: 'insensitive' } },
       { company: { contains: params.search, mode: 'insensitive' } },
+      { country: { contains: params.search, mode: 'insensitive' } },
+      { city: { contains: params.search, mode: 'insensitive' } },
+      { tags: { has: params.search } },
     ]
   }
 
@@ -29,14 +32,35 @@ export async function listCustomers(params: { status?: string; search?: string; 
     prisma.customer.count({ where }),
   ])
 
-  return { customers, pagination: paginationResponse(total, page, limit) }
+  // Aggregate order value + most-recent order per customer so the admin list
+  // can show real lifetime spend instead of a hardcoded 0.
+  const ids = customers.map((c) => c.id)
+  const totals = ids.length
+    ? await prisma.order.groupBy({
+        by: ['customerId'],
+        where: { customerId: { in: ids } },
+        _sum: { total: true },
+        _max: { createdAt: true },
+      })
+    : []
+  const byCustomer = new Map(totals.map((t) => [t.customerId, t]))
+  const enriched = customers.map((c) => {
+    const agg = byCustomer.get(c.id)
+    return {
+      ...c,
+      totalSpent: Number(agg?._sum.total ?? 0),
+      lastOrderAt: agg?._max.createdAt ?? null,
+    }
+  })
+
+  return { customers: enriched, pagination: paginationResponse(total, page, limit) }
 }
 
 export async function getCustomer(id: string) {
   const customer = await prisma.customer.findUnique({
     where: { id },
     include: {
-      orders: { orderBy: { createdAt: 'desc' }, take: 10, select: { id: true, orderNumber: true, total: true, status: true, createdAt: true } },
+      orders: { orderBy: { createdAt: 'desc' }, take: 10, select: { id: true, orderNumber: true, total: true, status: true, createdAt: true, _count: { select: { items: true } } } },
       rfqs: { orderBy: { createdAt: 'desc' }, take: 10 },
       _count: { select: { orders: true, rfqs: true, offers: true } },
     },

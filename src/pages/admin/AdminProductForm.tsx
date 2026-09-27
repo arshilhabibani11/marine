@@ -51,7 +51,7 @@ export default function AdminProductForm() {
           >
             <Eye size={14} /> Preview
           </button>
-          {hook.isEditing && (
+          {hook.isEditing && hook.form.status === 'published' && (
             <a
               href={`/product/${hook.id}`}
               target="_blank"
@@ -60,6 +60,14 @@ export default function AdminProductForm() {
             >
               <ExternalLink size={14} /> View Live
             </a>
+          )}
+          {hook.isEditing && hook.form.status !== 'published' && (
+            <span
+              title="Publish this product to view it on the storefront"
+              className="inline-flex cursor-not-allowed items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-2.5 text-xs font-bold text-[var(--text-muted)] opacity-60"
+            >
+              <ExternalLink size={14} /> View Live
+            </span>
           )}
           <button
             onClick={hook.handleSave}

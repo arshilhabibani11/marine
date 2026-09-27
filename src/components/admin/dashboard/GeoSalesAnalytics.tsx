@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Globe, TrendingUp, ShoppingCart, Users } from 'lucide-react'
+import { orderCustomerEmail } from './orderFields'
 
 interface Props {
   orders: any[]
@@ -34,7 +35,7 @@ export function GeoSalesAnalytics({ orders }: Props) {
       const data = countryMap[country]
       data.revenue += order.total || 0
       data.orderCount++
-      data.customers.add(order.email || order.customerEmail || order.customerName || '')
+      data.customers.add(orderCustomerEmail(order) || order.customerName || '')
 
       for (const item of order.items || []) {
         const name = item.productName || item.name || 'Product'

@@ -46,7 +46,7 @@ export function buildPreviewProduct(
     onSale: isOnSale,
     saleStartsAt: isOnSale && form.saleStartsAt ? fromLocalInputValue(form.saleStartsAt) : undefined,
     saleEndsAt: isOnSale && form.saleEndsAt ? fromLocalInputValue(form.saleEndsAt) : undefined,
-    inStock: form.inStock,
+    inStock: form.availability !== 'out-of-stock' && (Number(form.stockCount) || 0) > 0,
     stockCount: Number(form.stockCount) || 0,
     customLabel: form.customLabel || undefined,
     customLabelColor: form.customLabel ? form.customLabelColor : undefined,

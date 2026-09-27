@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Globe, Truck, CreditCard, Bell, Save, CheckCircle, Loader2 } from 'lucide-react'
 import { admin } from '../../lib/api'
 import { useToast } from '../../components/admin/toast-context'
+import { useStore } from '../../store/useStore'
 import type { SettingsTab, SiteConfig, ShippingZone, PaymentMethod, NotificationPrefs } from './settings/types'
 import { defaultSite, defaultZones, defaultPayments, defaultNotifications } from './settings/types'
 import { SiteConfigTab } from './settings/SiteConfigTab'
@@ -9,10 +10,37 @@ import { ShippingTab } from './settings/ShippingTab'
 import { PaymentsTab } from './settings/PaymentsTab'
 import { NotificationsTab } from './settings/NotificationsTab'
 
+// Settings are stored under namespaced keys. The storefront reads `site.*`
+// (getPublicSettings), so the admin must save/load the very same keys — saving
+// unprefixed names silently disconnected the admin from the live store.
+const SITE_KEY: Record<string, string> = {
+  companyName: 'site.companyName',
+  tagline: 'site.tagline',
+  email: 'site.email',
+  phone: 'site.phone',
+  address: 'site.address',
+  city: 'site.city',
+  country: 'site.country',
+  currency: 'site.currency',
+  timezone: 'site.timezone',
+  seoTitle: 'site.seoTitle',
+  seoDescription: 'site.seoDescription',
+  googleAnalyticsId: 'site.googleAnalyticsId',
+  maintenanceMode: 'site.maintenanceMode',
+}
+const STORE_KEY = {
+  shippingZones: 'store.shippingZones',
+  paymentMethods: 'store.paymentMethods',
+  notifications: 'store.notifications',
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────────
 
 export default function AdminSettings() {
   const { toast } = useToast()
+  const adminUser = useStore((s) => s.adminUser)
+  // PUT /admin/settings requires store-manager; everyone else is read-only.
+  const canEdit = ['owner', 'store-manager'].includes(adminUser?.role || 'owner')
   const [activeTab, setActiveTab] = useState<SettingsTab>('site')
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -32,36 +60,40 @@ export default function AdminSettings() {
   const [notifs, setNotifs] = useState<NotificationPrefs>(defaultNotifications)
   const updateNotif = <K extends keyof NotificationPrefs>(key: K, value: NotificationPrefs[K]) => setNotifs((n) => ({ ...n, [key]: value }))
 
-  // Fetch settings from API on mount
+  // Fetch settings from API on mount. The API returns `flat` (key/value rows);
+  // `settings` is grouped by category and is not usable as a flat lookup.
   const fetchSettings = useCallback(async () => {
     setLoading(true)
     try {
       const res = await admin.settings.get()
-      const s = res.settings || {}
+      const flat = new Map((res.flat || []).map((f) => [f.key, f.value as unknown]))
+      const val = (name: string) => flat.get(SITE_KEY[name])
+      const parse = <T,>(key: string, fallback: T): T => {
+        const raw = flat.get(key)
+        if (raw == null) return fallback
+        if (typeof raw === 'string') {
+          try { return JSON.parse(raw) as T } catch { return fallback }
+        }
+        return raw as T
+      }
       setSite({
-        companyName: String(s.companyName || defaultSite.companyName),
-        tagline: String(s.tagline || defaultSite.tagline),
-        email: String(s.email || defaultSite.email),
-        phone: String(s.phone || defaultSite.phone),
-        address: String(s.address || defaultSite.address),
-        city: String(s.city || defaultSite.city),
-        country: String(s.country || defaultSite.country),
-        currency: String(s.currency || defaultSite.currency),
-        timezone: String(s.timezone || defaultSite.timezone),
-        seoTitle: String(s.seoTitle || defaultSite.seoTitle),
-        seoDescription: String(s.seoDescription || defaultSite.seoDescription),
-        googleAnalyticsId: String(s.googleAnalyticsId || defaultSite.googleAnalyticsId),
-        maintenanceMode: s.maintenanceMode === 'true' || s.maintenanceMode === true || defaultSite.maintenanceMode,
+        companyName: String(val('companyName') ?? defaultSite.companyName),
+        tagline: String(val('tagline') ?? defaultSite.tagline),
+        email: String(val('email') ?? defaultSite.email),
+        phone: String(val('phone') ?? defaultSite.phone),
+        address: String(val('address') ?? defaultSite.address),
+        city: String(val('city') ?? defaultSite.city),
+        country: String(val('country') ?? defaultSite.country),
+        currency: String(val('currency') ?? defaultSite.currency),
+        timezone: String(val('timezone') ?? defaultSite.timezone),
+        seoTitle: String(val('seoTitle') ?? defaultSite.seoTitle),
+        seoDescription: String(val('seoDescription') ?? defaultSite.seoDescription),
+        googleAnalyticsId: String(val('googleAnalyticsId') ?? defaultSite.googleAnalyticsId),
+        maintenanceMode: val('maintenanceMode') === 'true' || val('maintenanceMode') === true || defaultSite.maintenanceMode,
       })
-      if (s.shippingZones) {
-        try { setZones(JSON.parse(String(s.shippingZones))) } catch { /* use defaults */ }
-      }
-      if (s.paymentMethods) {
-        try { setPayments(JSON.parse(String(s.paymentMethods))) } catch { /* use defaults */ }
-      }
-      if (s.notifications) {
-        try { setNotifs(JSON.parse(String(s.notifications))) } catch { /* use defaults */ }
-      }
+      setZones(parse<ShippingZone[]>(STORE_KEY.shippingZones, defaultZones))
+      setPayments(parse<PaymentMethod[]>(STORE_KEY.paymentMethods, defaultPayments))
+      setNotifs(parse<NotificationPrefs>(STORE_KEY.notifications, defaultNotifications))
     } catch (err: unknown) {
       console.error('Failed to load settings:', err)
       toast('Failed to load settings from API', 'error')
@@ -73,26 +105,19 @@ export default function AdminSettings() {
   useEffect(() => { fetchSettings() }, [fetchSettings])
 
   const handleSave = async () => {
+    if (!canEdit) {
+      toast('Your role cannot change store settings', 'error')
+      return
+    }
     setSaving(true)
     try {
-      const settings: Record<string, string | number | boolean> = {
-        companyName: site.companyName,
-        tagline: site.tagline,
-        email: site.email,
-        phone: site.phone,
-        address: site.address,
-        city: site.city,
-        country: site.country,
-        currency: site.currency,
-        timezone: site.timezone,
-        seoTitle: site.seoTitle,
-        seoDescription: site.seoDescription,
-        googleAnalyticsId: site.googleAnalyticsId,
-        maintenanceMode: site.maintenanceMode,
-        shippingZones: JSON.stringify(zones),
-        paymentMethods: JSON.stringify(payments),
-        notifications: JSON.stringify(notifs),
+      const settings: Record<string, string | number | boolean> = {}
+      for (const [field, key] of Object.entries(SITE_KEY)) {
+        settings[key] = (site as unknown as Record<string, string | boolean>)[field]
       }
+      settings[STORE_KEY.shippingZones] = JSON.stringify(zones)
+      settings[STORE_KEY.paymentMethods] = JSON.stringify(payments)
+      settings[STORE_KEY.notifications] = JSON.stringify(notifs)
       await admin.settings.update(settings)
       setSaved(true)
       toast('Settings saved', 'success')
@@ -128,13 +153,19 @@ export default function AdminSettings() {
           <h1 className="font-display text-2xl font-extrabold text-[var(--text-primary)]">Settings</h1>
           <p className="text-sm text-[var(--text-muted)] mt-1">Manage your store configuration</p>
         </div>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent-gold)] px-5 py-2.5 text-xs font-bold text-[var(--btn-blue-text)] hover:shadow-[0_4px_12px_rgba(232,170,36,0.3)] transition-all disabled:opacity-50"
-        >
-          {saving ? <><Loader2 size={14} className="animate-spin" /> Saving...</> : saved ? <><CheckCircle size={14} /> Saved!</> : <><Save size={14} /> Save Changes</>}
-        </button>
+        {canEdit ? (
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent-gold)] px-5 py-2.5 text-xs font-bold text-[var(--btn-blue-text)] hover:shadow-[0_4px_12px_rgba(232,170,36,0.3)] transition-all disabled:opacity-50"
+          >
+            {saving ? <><Loader2 size={14} className="animate-spin" /> Saving...</> : saved ? <><CheckCircle size={14} /> Saved!</> : <><Save size={14} /> Save Changes</>}
+          </button>
+        ) : (
+          <span className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-2.5 text-xs font-bold text-[var(--text-muted)]">
+            Read-only — ask a store manager to make changes
+          </span>
+        )}
       </div>
 
       <div className="flex gap-2 overflow-x-auto pb-1">
@@ -156,10 +187,13 @@ export default function AdminSettings() {
         })}
       </div>
 
-      {activeTab === 'site' && <SiteConfigTab site={site} updateSite={updateSite} />}
-      {activeTab === 'shipping' && <ShippingTab zones={zones} setZones={setZones} />}
-      {activeTab === 'payments' && <PaymentsTab payments={payments} setPayments={setPayments} />}
-      {activeTab === 'notifications' && <NotificationsTab notifs={notifs} updateNotif={updateNotif} />}
+      {/* A disabled fieldset blocks every descendant input for read-only roles. */}
+      <fieldset disabled={!canEdit} className="m-0 min-w-0 border-0 p-0">
+        {activeTab === 'site' && <SiteConfigTab site={site} updateSite={updateSite} />}
+        {activeTab === 'shipping' && <ShippingTab zones={zones} setZones={setZones} />}
+        {activeTab === 'payments' && <PaymentsTab payments={payments} setPayments={setPayments} />}
+        {activeTab === 'notifications' && <NotificationsTab notifs={notifs} updateNotif={updateNotif} />}
+      </fieldset>
     </div>
   )
 }

@@ -1,5 +1,6 @@
 import { ShoppingCart, Loader2, RefreshCw } from 'lucide-react'
 import { useLiveOrders } from '../../../hooks/useLiveOrders'
+import { orderCustomerName } from './orderFields'
 
 interface Props {
   orders?: any[]
@@ -62,7 +63,7 @@ export function LiveSalesTracker({ orders: propOrders, loading: propLoading }: P
                       {order.orderNumber || order.id}
                     </p>
                     <p className="text-[0.625rem] text-[var(--text-muted)] truncate">
-                      {order.customerName || order.customer?.name || order.email || 'Customer'}
+                      {orderCustomerName(order)}
                     </p>
                   </div>
                 </div>

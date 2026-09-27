@@ -32,16 +32,18 @@ function PaypalFullLogo() {
 interface CheckoutPaymentProps {
   paymentMethod: string
   setPaymentMethod: (method: string) => void
+  /** Enabled method ids, sourced from the admin's Settings. */
+  availableMethods: string[]
   goToStep: (step: number) => void
 }
 
-export function CheckoutPayment({ paymentMethod, setPaymentMethod, goToStep }: CheckoutPaymentProps) {
+export function CheckoutPayment({ paymentMethod, setPaymentMethod, availableMethods, goToStep }: CheckoutPaymentProps) {
   const { t } = useTranslation()
 
   const methods = [
     { id: 'bank-transfer', label: t('checkout.paymentBank'), icon: Landmark },
     { id: 'paypal', label: t('checkout.paymentPaypal'), icon: PaypalFullLogo },
-  ]
+  ].filter((m) => availableMethods.includes(m.id))
 
   return (
     <div className="bg-[var(--surface)] border border-[var(--border)] p-5 sm:p-8">
@@ -50,7 +52,7 @@ export function CheckoutPayment({ paymentMethod, setPaymentMethod, goToStep }: C
       </h3>
 
       {/* Payment method selection */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
         {methods.map((m) => {
           const Icon = m.icon
           return (

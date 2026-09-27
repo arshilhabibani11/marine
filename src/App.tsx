@@ -37,6 +37,7 @@ const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'))
 const TermsOfService = lazy(() => import('./pages/TermsOfService'))
 const RefundPolicy = lazy(() => import('./pages/RefundPolicy'))
 import { CookieConsent } from './components/CookieConsent'
+import { StoreAnalytics } from './components/analytics/StoreAnalytics'
 import { PayPalProvider } from './components/PayPalProvider'
 import { WhatsAppFloat } from './components/WhatsAppFloat'
 import { PageSkeleton } from './components/ui/Skeleton'
@@ -101,6 +102,7 @@ function LocaleLayout() {
     <LocaleContext.Provider value={locale as Language}>
       <PageErrorBoundary>
         <PageWrapper>
+          <StoreAnalytics />
           <Suspense fallback={null}>
             <CommandSearch />
             <AuthModal />

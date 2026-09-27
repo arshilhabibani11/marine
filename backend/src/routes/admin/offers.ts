@@ -15,9 +15,19 @@ router.get('/', asyncHandler(async (req, res) => {
   sendSuccess(res, await offerAdminService.listOffers({
     status: req.query.status as string,
     productId: req.query.productId as string,
+    search: req.query.search as string,
     page: Number(req.query.page),
     limit: Number(req.query.limit),
   }))
+}))
+
+// ─── Export Offers CSV ───────────────────────────────────────
+// Declared before '/:id' so it isn't captured as an offer id.
+router.get('/export/csv', requireRole('sales-agent'), asyncHandler(async (_req, res) => {
+  const csv = await offerAdminService.exportOffersCsv()
+  res.setHeader('Content-Type', 'text/csv')
+  res.setHeader('Content-Disposition', `attachment; filename=offers-${new Date().toISOString().slice(0, 10)}.csv`)
+  res.send(csv)
 }))
 
 // ─── Get Offer Detail ──────────────────────────────────────────

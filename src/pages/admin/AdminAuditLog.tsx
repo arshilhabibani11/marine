@@ -38,17 +38,32 @@ function mapEntityType(entityType: string): ActionType {
   const map: Record<string, ActionType> = {
     product: 'product',
     order: 'order',
-    settings: 'settings',
+    store_settings: 'settings',
     admin_user: 'user',
     customer: 'user',
     rfq: 'rfq',
     contact_message: 'message',
+    emergency_request: 'message',
     brand: 'brand',
     category: 'product',
+    industry: 'product',
     media: 'product',
     offer: 'order',
   }
   return map[entityType] || 'other'
+}
+
+// Reverse of mapEntityType: the raw entityType values the backend filters on.
+// "other" is a sentinel the backend expands to "everything not listed here".
+const typeEntityTypes: Record<ActionType, string> = {
+  product: 'product,category,industry,media',
+  order: 'order,offer',
+  settings: 'store_settings',
+  user: 'admin_user,customer',
+  rfq: 'rfq',
+  message: 'contact_message,emergency_request',
+  brand: 'brand',
+  other: 'other',
 }
 
 // Build human-readable details from audit log fields
@@ -127,7 +142,7 @@ export default function AdminAuditLog() {
     try {
       const params: Record<string, string> = {}
       if (search.trim()) params.search = search.trim()
-      if (typeFilter) params.entityType = typeFilter
+      if (typeFilter) params.entityType = typeEntityTypes[typeFilter]
       params.page = String(page)
       params.limit = String(ITEMS_PER_PAGE)
       const res = await admin.audit.list(params)

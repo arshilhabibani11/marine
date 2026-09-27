@@ -24,6 +24,8 @@ router.get('/', asyncHandler(async (req, res) => {
     status: req.query.status as string,
     paymentStatus: req.query.paymentStatus as string,
     search: req.query.search as string,
+    from: req.query.from as string,
+    to: req.query.to as string,
     page: Number(req.query.page),
     limit: Number(req.query.limit),
   })

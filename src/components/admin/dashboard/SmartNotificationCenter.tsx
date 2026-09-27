@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Bell, AlertTriangle, FileText, ShoppingCart, X } from 'lucide-react'
+import { orderCustomerName } from './orderFields'
 
 interface Props {
   alerts: any[]
@@ -44,8 +45,8 @@ export function SmartNotificationCenter({ alerts, rfqs, orders }: Props) {
       items.push({
         id: `order-${order.id}`, type: 'orders',
         icon: ShoppingCart, color: 'text-[var(--accent-blue)]', bg: 'bg-[var(--accent-blue)]/10',
-        title: `Order ${order.id?.slice(0, 8) || 'new'} — $${(order.total || 0).toLocaleString()}`,
-        detail: `${order.customerName || 'Customer'} · ${(order.items || []).length} items`,
+        title: `Order ${order.orderNumber || order.id?.slice(0, 8) || 'new'} — $${(order.total || 0).toLocaleString()}`,
+        detail: `${orderCustomerName(order)} · ${(order.items || []).length} items`,
         priority: 'normal', time: new Date(order.createdAt).getTime(),
       })
     }

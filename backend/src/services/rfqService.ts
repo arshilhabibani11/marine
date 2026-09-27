@@ -3,6 +3,7 @@ import { generateRfqNumber, generateOrderNumber, generateOfferNumber, pagination
 import { rfqInclude } from '../utils/prisma-helpers.js'
 import { logAudit } from '../utils/audit.js'
 import { sendRfqReceived, sendRfqResponse } from './email.js'
+import { shouldNotify } from './settingsService.js'
 import logger from '../utils/logger.js'
 import type { AuthUser } from '../middleware/auth.js'
 
@@ -49,13 +50,24 @@ export async function createRfq(data: {
     newValue: rfq,
   })
 
-  // Notify admin team (non-blocking)
-  sendRfqReceived({
-    rfqNumber: rfq.rfqNumber,
-    customerName: data.fullName,
-    productDescription: data.productDescription,
-    urgency: data.urgency || 'standard',
-  }).catch(err => logger.error({ err }, 'RFQ email failed'))
+  // Notify admin team (non-blocking), honouring the admin notification prefs
+  // saved in Settings → Notifications (store.notifications).
+  const emergency = data.urgency === 'emergency'
+  let notify = true
+  try {
+    const [received, urgent] = await Promise.all([shouldNotify('rfqReceived'), shouldNotify('rfqUrgent')])
+    notify = received && (!emergency || urgent)
+  } catch (err) {
+    logger.warn({ err }, 'RFQ notification prefs lookup failed; notifying anyway')
+  }
+  if (notify) {
+    sendRfqReceived({
+      rfqNumber: rfq.rfqNumber,
+      customerName: data.fullName,
+      productDescription: data.productDescription,
+      urgency: data.urgency || 'standard',
+    }).catch(err => logger.error({ err }, 'RFQ email failed'))
+  }
 
   return rfq
 }
@@ -91,6 +103,15 @@ export async function listRfqs(params: RfqFilters) {
   ])
 
   return { rfqs, pagination: paginationResponse(total, page, limit) }
+}
+
+export async function listAssignableAdmins() {
+  const users = await prisma.adminUser.findMany({
+    where: { isActive: true },
+    select: { id: true, name: true },
+    orderBy: { name: 'asc' },
+  })
+  return { users }
 }
 
 export async function getRfq(id: string) {

@@ -30,13 +30,17 @@ export async function getDashboardStats() {
     totalOffers,
     newOffers,
     revenue,
+    newMessages,
   ] = await Promise.all([
     prisma.product.count(),
     prisma.product.count({ where: { status: 'published' } }),
     prisma.product.count({ where: { status: 'draft' } }),
     prisma.product.count({ where: { status: 'hidden' } }),
-    prisma.product.count({ where: { availability: 'in-stock' } }),
-    prisma.product.count({ where: { availability: 'out-of-stock' } }),
+    // Same rule as the storefront (isProductInStock in utils/helpers.ts): a
+    // product is buyable only when it is not explicitly marked out of stock AND
+    // has units on hand. Keep these counts in lockstep with productQueries.
+    prisma.product.count({ where: { availability: { not: 'out-of-stock' }, stockCount: { gt: 0 } } }),
+    prisma.product.count({ where: { OR: [{ availability: 'out-of-stock' }, { stockCount: { lte: 0 } }] } }),
     prisma.product.count({ where: { availability: 'emergency' } }),
     prisma.product.count({ where: { isNewArrival: true } }),
     prisma.brand.count(),
@@ -51,8 +55,11 @@ export async function getDashboardStats() {
     prisma.rfq.count({ where: { urgency: 'urgent' } }),
     prisma.rfq.count({ where: { urgency: 'emergency' } }),
     prisma.offer.count(),
-    prisma.offer.count({ where: { status: 'new' } }),
+    // Offer.status has no 'new' value — new offers are created as 'pending'.
+    prisma.offer.count({ where: { status: 'pending' } }),
     prisma.order.aggregate({ _sum: { total: true }, where: { paymentStatus: 'paid' } }),
+    // Unread contact messages (the admin inbox maps status 'new' → unread).
+    prisma.contactMessage.count({ where: { status: 'new' } }),
   ])
 
   // "On sale" = a published product whose sale price is actually lower than
@@ -63,9 +70,19 @@ export async function getDashboardStats() {
     WHERE status = 'published' AND sale_price IS NOT NULL AND sale_price < regular_price`
   const saleProducts = Number(saleRow[0]?.count || 0)
 
+  // "Low stock" is per-product: stock_count > 0 and <= that product's own
+  // low_stock_threshold (default 10). Prisma cannot compare two columns in a
+  // filter, so the ids come from a raw query and the rows are then loaded.
+  const lowStockIds = (await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM products
+    WHERE stock_count > 0 AND stock_count <= low_stock_threshold
+      AND status = 'published' AND availability <> 'out-of-stock'
+    ORDER BY stock_count ASC
+    LIMIT 20`).map((r) => r.id)
+
   const [lowStockProducts, missingImageProducts] = await Promise.all([
     prisma.product.findMany({
-      where: { stockCount: { lte: 10 }, status: 'published', availability: 'in-stock' },
+      where: { id: { in: lowStockIds } },
       select: {
         id: true, name: true, sku: true, stockCount: true, lowStockThreshold: true,
         availability: true, brand: { select: { name: true } }, category: { select: { name: true } },
@@ -114,6 +131,7 @@ export async function getDashboardStats() {
     emergencyRfqs,
     totalOffers,
     newOffers,
+    newMessages,
     inStockProducts,
     saleProducts,
     newArrivals,
@@ -154,9 +172,17 @@ export async function getDashboardStats() {
 }
 
 export async function getDashboardAlerts() {
+  // Same per-product threshold rule as the stats above.
+  const lowStockIds = (await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM products
+    WHERE stock_count > 0 AND stock_count <= low_stock_threshold
+      AND status = 'published' AND availability <> 'out-of-stock'
+    ORDER BY stock_count ASC
+    LIMIT 20`).map((r) => r.id)
+
   const [lowStock, overdueRfqs, outOfStockCount] = await Promise.all([
     prisma.product.findMany({
-      where: { stockCount: { lte: 10 }, status: 'published', availability: 'in-stock' },
+      where: { id: { in: lowStockIds } },
       select: { id: true, name: true, sku: true, stockCount: true, lowStockThreshold: true },
       orderBy: { stockCount: 'asc' },
       take: 20,
@@ -166,7 +192,7 @@ export async function getDashboardAlerts() {
       select: { id: true, rfqNumber: true, fullName: true, urgency: true, createdAt: true },
       orderBy: { createdAt: 'asc' },
     }),
-    prisma.product.count({ where: { availability: 'out-of-stock' } }),
+    prisma.product.count({ where: { OR: [{ availability: 'out-of-stock' }, { stockCount: { lte: 0 } }] } }),
   ])
   return { lowStockProducts: lowStock, overdueRfqs, outOfStockCount }
 }

@@ -1,5 +1,7 @@
 import { useMemo } from 'react'
 import { TowerControl, Target, DollarSign, ShoppingCart, Package } from 'lucide-react'
+import { isCancelledOrRefunded } from './orderStatus'
+import { orderCustomerEmail } from './orderFields'
 
 interface Props {
   stats: any
@@ -14,7 +16,7 @@ export function ExecutiveControlTower({ orders, rfqs, products, alerts }: Props)
   const data = useMemo(() => {
     const now = Date.now()
     const DAY = 86400000
-    const completed = orders.filter((o: any) => !['cancelled', 'refunded'].includes(o.status))
+    const completed = orders.filter((o: any) => !isCancelledOrRefunded(o))
     const cancelled = orders.filter((o: any) => o.status === 'cancelled')
 
     // Revenue
@@ -36,23 +38,23 @@ export function ExecutiveControlTower({ orders, rfqs, products, alerts }: Props)
     const aov = completed.length > 0 ? totalRevenue / completed.length : 0
 
     // Inventory
-    const lowStock = products.filter((p: any) => (p.stockCount || 0) <= (p.lowStockThreshold || 5) && (p.stockCount || 0) > 0).length
+    const lowStock = products.filter((p: any) => (p.stockCount || 0) <= (p.lowStockThreshold || 10) && (p.stockCount || 0) > 0).length
     const outOfStock = products.filter((p: any) => (p.stockCount || 0) === 0).length
 
     // RFQs
-    const pendingRfqs = rfqs.filter((r: any) => r.status === 'new' || r.status === 'in-progress').length
+    const pendingRfqs = rfqs.filter((r: any) => r.status !== 'won' && r.status !== 'lost' && r.status !== 'closed').length
     const emergencyRfqs = rfqs.filter((r: any) => r.urgency === 'emergency' && r.status !== 'closed').length
 
     // Fraud risk
     const emailOrders: Record<string, number> = {}
     for (const o of orders) {
-      const email = o.email || o.customerEmail || ''
+      const email = orderCustomerEmail(o)
       if (email) emailOrders[email] = (emailOrders[email] || 0) + 1
     }
     const rapidOrderers = Object.entries(emailOrders).filter(([, count]) => count >= 5).length
 
     // Customer count
-    const uniqueCustomers = new Set(orders.map((o: any) => o.email || o.customerEmail)).size
+    const uniqueCustomers = new Set(orders.map((o: any) => orderCustomerEmail(o)).filter(Boolean)).size
 
     return {
       totalRevenue, monthRevenue, revGrowth, totalOrders, activeOrders,

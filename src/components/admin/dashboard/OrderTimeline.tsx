@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Clock, CheckCircle, Package, Truck, XCircle, CreditCard } from 'lucide-react'
+import { orderCustomerName } from './orderFields'
 
 interface Props {
   orders: any[]
@@ -70,7 +71,7 @@ export function OrderTimeline({ orders }: Props) {
 
       {/* Filter tabs */}
       <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1">
-        {['all', 'pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'].map(f => (
+        {['all', 'pending', 'confirmed', 'paid', 'processing', 'packed', 'shipped', 'delivered', 'cancelled'].map(f => (
           <button key={f} onClick={() => setSelectedStatus(f)}
             className={`shrink-0 rounded-lg px-2.5 py-1 text-[0.625rem] font-bold transition-all ${
               selectedStatus === f ? 'bg-[var(--accent-gold)] text-[var(--btn-blue-text)]' : 'bg-[var(--surface-soft)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
@@ -95,14 +96,14 @@ export function OrderTimeline({ orders }: Props) {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <p className="text-xs font-semibold text-[var(--text-primary)] truncate">
-                      {order.id?.slice(0, 8) || 'Order'}
+                      {order.orderNumber || order.id?.slice(0, 8) || 'Order'}
                     </p>
                     <span className={`rounded-md px-1.5 py-0.5 text-[0.5rem] font-bold ${order.config.bg} ${order.config.color}`}>
                       {order.config.label}
                     </span>
                   </div>
                   <p className="text-[0.625rem] text-[var(--text-muted)]">
-                    {order.customerName || order.email || 'Customer'} · {(order.items || []).length} items
+                    {orderCustomerName(order)} · {(order.items || []).length} items
                   </p>
                 </div>
                 <div className="text-right shrink-0">

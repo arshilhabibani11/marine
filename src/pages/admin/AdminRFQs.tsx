@@ -14,7 +14,10 @@ import {
   Send,
   MessageSquare,
   HandCoins,
+  CheckCircle,
   Loader2,
+  StickyNote,
+  Package,
 } from 'lucide-react'
 import { admin } from '../../lib/api'
 import { useToast } from '../../components/admin/toast-context'
@@ -24,17 +27,30 @@ import type { ApiRfq } from '../../lib/api-types'
 // ─── Types ────────────────────────────────────────────────────────────────────────
 
 type RFQUrgency = 'standard' | 'urgent' | 'emergency'
-type RFQStatus = 'new' | 'in-progress' | 'quoted' | 'closed' | 'won' | 'lost'
+// Must mirror the backend statusSchema enum exactly (routes/admin/rfqs.ts).
+type RFQStatus = 'new' | 'reviewing' | 'awaiting-supplier' | 'quote-sent' | 'customer-replied' | 'won' | 'lost' | 'closed'
 
 interface RFQItem {
+  id: string
   productName: string
   quantity: number
   unit: string
   notes: string
 }
 
-interface RFQ {
+interface RFQNote {
   id: string
+  note: string
+  isInternal: boolean
+  authorName: string
+  createdAt: string
+}
+
+interface RFQ {
+  /** Backend UUID — use this for every API call. */
+  id: string
+  /** Human-facing RFQ number. */
+  number: string
   customerName: string
   customerEmail: string
   customerPhone: string
@@ -45,16 +61,19 @@ interface RFQ {
   items: RFQItem[]
   subject: string
   message: string
+  partNumber: string
+  brand: string
+  deliveryLocation: string
   assignedTo: string
+  assignedToId: string
   createdAt: string
   updatedAt: string
-  notes: string
+  internalNotes: string
+  notes: RFQNote[]
   responseCount: number
 }
 
-// ─── Mock Data ────────────────────────────────────────────────────────────────────
-
-
+// ─── Config ───────────────────────────────────────────────────────────────────────
 
 const urgencyConfig: Record<RFQUrgency, { label: string; color: string; bg: string; icon: typeof Clock }> = {
   emergency: { label: 'Emergency', color: 'text-[var(--danger)]', bg: 'bg-[var(--danger)]/10', icon: AlertTriangle },
@@ -64,37 +83,74 @@ const urgencyConfig: Record<RFQUrgency, { label: string; color: string; bg: stri
 
 const statusConfig: Record<RFQStatus, { label: string; color: string; bg: string }> = {
   'new': { label: 'New', color: 'text-[var(--accent-teal)]', bg: 'bg-[var(--accent-teal)]/10' },
-  'in-progress': { label: 'In Progress', color: 'text-[var(--accent-blue)]', bg: 'bg-[var(--accent-blue)]/10' },
-  'quoted': { label: 'Quoted', color: 'text-[var(--accent-gold)]', bg: 'bg-[var(--accent-gold)]/10' },
-  'closed': { label: 'Closed', color: 'text-[var(--text-muted)]', bg: 'bg-[var(--text-muted)]/10' },
+  'reviewing': { label: 'Reviewing', color: 'text-[var(--accent-blue)]', bg: 'bg-[var(--accent-blue)]/10' },
+  'awaiting-supplier': { label: 'Awaiting Supplier', color: 'text-[var(--accent-gold)]', bg: 'bg-[var(--accent-gold)]/10' },
+  'quote-sent': { label: 'Quote Sent', color: 'text-[var(--accent-blue)]', bg: 'bg-[var(--accent-blue)]/10' },
+  'customer-replied': { label: 'Customer Replied', color: 'text-[var(--accent-teal)]', bg: 'bg-[var(--accent-teal)]/10' },
   'won': { label: 'Won', color: 'text-[var(--success)]', bg: 'bg-[var(--success)]/10' },
   'lost': { label: 'Lost', color: 'text-[var(--danger)]', bg: 'bg-[var(--danger)]/10' },
+  'closed': { label: 'Closed', color: 'text-[var(--text-muted)]', bg: 'bg-[var(--text-muted)]/10' },
 }
 
-const statusFlow: RFQStatus[] = ['new', 'in-progress', 'quoted', 'won']
+const statusFlow: RFQStatus[] = ['new', 'reviewing', 'awaiting-supplier', 'quote-sent', 'customer-replied', 'won']
 
 const ITEMS_PER_PAGE = 12
+
+// Never crash on values the DB may hold that aren't in the enums above.
+const urgencyOf = (u: string) => urgencyConfig[u as RFQUrgency] ?? urgencyConfig.standard
+const statusOf = (s: string) => statusConfig[s as RFQStatus] ?? statusConfig['new']
 
 // ─── Component ────────────────────────────────────────────────────────────────────
 
 function mapApiRfq(r: ApiRfq): RFQ {
+  const items: RFQItem[] = (r.items && r.items.length > 0)
+    ? r.items.map((it) => ({
+        id: it.id,
+        productName: it.productName || 'Item',
+        quantity: it.quantity ?? 1,
+        unit: it.unit || 'pcs',
+        notes: it.notes || '',
+      }))
+    : [{
+        id: 'legacy',
+        productName: r.productDescription || 'RFQ Request',
+        quantity: r.quantity || 1,
+        unit: 'pcs',
+        notes: '',
+      }]
+
+  const notes: RFQNote[] = (r.rfqNotes || []).map((n) => ({
+    id: n.id,
+    note: n.note,
+    isInternal: n.isInternal,
+    authorName: n.author?.name || 'System',
+    createdAt: n.createdAt?.split('T')[0] || '',
+  }))
+
   return {
-    id: r.rfqNumber || r.id,
+    id: r.id,
+    number: r.rfqNumber || r.id,
     customerName: r.fullName || r.customer?.name || '',
     customerEmail: r.email || r.customer?.email || '',
-    customerPhone: r.phone || '',
+    customerPhone: r.phone || r.customer?.phone || '',
     company: r.company || '',
     country: r.country || '',
     urgency: (r.urgency || 'standard') as RFQUrgency,
     status: (r.status || 'new') as RFQStatus,
-    items: [{ productName: r.productDescription || 'RFQ Request', quantity: r.quantity || 1, unit: 'pcs', notes: r.notes || '' }],
+    items,
     subject: r.productDescription?.slice(0, 80) || r.subject || 'RFQ Request',
-    message: r.productDescription || r.notes || '',
-    assignedTo: r.assignedTo || '',
+    message: r.productDescription || '',
+    partNumber: r.partNumber || '',
+    brand: r.brand || '',
+    deliveryLocation: r.deliveryLocation || '',
+    assignedTo: r.assignee?.name || '',
+    assignedToId: r.assignee?.id || r.assignedTo || '',
     createdAt: r.createdAt?.split('T')[0] || new Date().toISOString().split('T')[0],
     updatedAt: r.updatedAt?.split('T')[0] || new Date().toISOString().split('T')[0],
-    notes: r.notes || '',
-    responseCount: 0,
+    internalNotes: r.internalNotes || '',
+    notes,
+    // Customer-facing responses only (admin notes are internal).
+    responseCount: notes.filter((n) => !n.isInternal).length,
   }
 }
 
@@ -109,6 +165,22 @@ export default function AdminRFQs() {
   const [selectedRFQ, setSelectedRFQ] = useState<RFQ | null>(null)
   const [page, setPage] = useState(1)
   const [serverTotal, setServerTotal] = useState(0)
+  const [assignees, setAssignees] = useState<{ id: string; name: string }[]>([])
+  const [offerTarget, setOfferTarget] = useState<RFQ | null>(null)
+  const [offerPrice, setOfferPrice] = useState('')
+  const [creatingOffer, setCreatingOffer] = useState(false)
+  const [respondTarget, setRespondTarget] = useState<RFQ | null>(null)
+  const [respondMessage, setRespondMessage] = useState('')
+  const [sendingResponse, setSendingResponse] = useState(false)
+  const [noteTarget, setNoteTarget] = useState<RFQ | null>(null)
+  const [noteText, setNoteText] = useState('')
+  const [addingNote, setAddingNote] = useState(false)
+
+  useEffect(() => {
+    admin.rfqs.assignees()
+      .then((res) => setAssignees(res.users || []))
+      .catch(() => { /* assignee list is optional; assignment stays disabled */ })
+  }, [])
 
   const fetchRfqs = useCallback(async () => {
     setLoading(true)
@@ -132,15 +204,26 @@ export default function AdminRFQs() {
 
   useEffect(() => { fetchRfqs() }, [fetchRfqs])
 
+  // Keep the open detail slide-over in sync with the refreshed list after a
+  // mutation (status/assign/respond/note) so it never shows stale fields.
+  useEffect(() => {
+    setSelectedRFQ((prev) => {
+      if (!prev) return prev
+      return rfqs.find((r) => r.id === prev.id) ?? null
+    })
+  }, [rfqs])
+
   const filtered = useMemo(() => {
     let result = [...rfqs]
     if (search.trim()) {
       const q = search.toLowerCase()
       result = result.filter((r) =>
-        r.id.toLowerCase().includes(q) ||
+        r.number.toLowerCase().includes(q) ||
         r.company.toLowerCase().includes(q) ||
         r.subject.toLowerCase().includes(q) ||
-        r.customerName.toLowerCase().includes(q)
+        r.partNumber.toLowerCase().includes(q) ||
+        r.customerName.toLowerCase().includes(q) ||
+        r.customerEmail.toLowerCase().includes(q)
       )
     }
     if (urgencyFilter) result = result.filter((r) => r.urgency === urgencyFilter)
@@ -158,12 +241,74 @@ export default function AdminRFQs() {
     return counts
   }, [rfqs])
 
-  const formatDate = (d: string) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  const formatDate = (d: string) => (d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—')
 
-  const handleAssign = async (rfqId: string, assignee: string) => {
+  const handleCreateOffer = async () => {
+    if (!offerTarget) return
+    const price = Number(offerPrice)
+    if (!price || price <= 0) {
+      toast('Enter a valid offer price', 'error')
+      return
+    }
+    setCreatingOffer(true)
     try {
-      await admin.rfqs.assign(rfqId, assignee)
-      toast(`RFQ assigned to ${assignee}`, 'success')
+      await admin.rfqs.convertToOffer(offerTarget.id, price)
+      toast(`Offer created from ${offerTarget.number}`, 'success')
+      setOfferTarget(null)
+      setOfferPrice('')
+      fetchRfqs()
+      navigate('/admin/offers')
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Failed to create offer', 'error')
+    } finally {
+      setCreatingOffer(false)
+    }
+  }
+
+  const handleRespond = async () => {
+    if (!respondTarget) return
+    if (!respondMessage.trim()) {
+      toast('Enter a response message', 'error')
+      return
+    }
+    setSendingResponse(true)
+    try {
+      await admin.rfqs.respond(respondTarget.id, respondMessage.trim())
+      toast(`Response sent for ${respondTarget.number}`, 'success')
+      setRespondTarget(null)
+      setRespondMessage('')
+      fetchRfqs()
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Failed to send response', 'error')
+    } finally {
+      setSendingResponse(false)
+    }
+  }
+
+  const handleAddNote = async () => {
+    if (!noteTarget) return
+    if (!noteText.trim()) {
+      toast('Enter a note', 'error')
+      return
+    }
+    setAddingNote(true)
+    try {
+      await admin.rfqs.addNote(noteTarget.id, noteText.trim(), true)
+      toast('Internal note added', 'success')
+      setNoteTarget(null)
+      setNoteText('')
+      fetchRfqs()
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Failed to add note', 'error')
+    } finally {
+      setAddingNote(false)
+    }
+  }
+
+  const handleAssign = async (rfqId: string, assigneeId: string, assigneeName: string) => {
+    try {
+      await admin.rfqs.assign(rfqId, assigneeId)
+      toast(`RFQ assigned to ${assigneeName}`, 'success')
       fetchRfqs()
     } catch (err: unknown) {
       toast(err instanceof Error ? err.message : 'Failed to assign', 'error')
@@ -178,14 +323,12 @@ export default function AdminRFQs() {
     const newStatus = statusFlow[idx + 1]
     try {
       await admin.rfqs.updateStatus(rfqId, newStatus)
-      toast(`RFQ ${rfqId} → ${statusConfig[newStatus].label}`, 'success')
+      toast(`RFQ ${rfq.number} → ${statusConfig[newStatus].label}`, 'success')
       fetchRfqs()
     } catch (err: unknown) {
       toast(err instanceof Error ? err.message : 'Failed to update status', 'error')
     }
   }
-
-  const assignees = ['Ahmed K.', 'Sarah M.', 'James L.', 'Priya R.', 'Unassigned']
 
   return (
     <div className="space-y-5">
@@ -222,7 +365,7 @@ export default function AdminRFQs() {
       <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
         <div className="relative">
           <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-          <input type="text" placeholder="Search by RFQ ID, company, subject, or customer..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1) }} className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] py-2.5 pl-10 pr-4 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] transition-all focus:border-[var(--accent-gold)]" />
+          <input type="text" placeholder="Search by RFQ number, customer, company, product, or part number..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1) }} className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] py-2.5 pl-10 pr-4 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] transition-all focus:border-[var(--accent-gold)]" />
         </div>
       </div>
 
@@ -240,8 +383,8 @@ export default function AdminRFQs() {
           </div>
         ) : (
           paginated.map((rfq) => {
-            const urg = urgencyConfig[rfq.urgency]
-            const sts = statusConfig[rfq.status]
+            const urg = urgencyOf(rfq.urgency)
+            const sts = statusOf(rfq.status)
             const UrgIcon = urg.icon
             return (
               <div key={rfq.id} className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 cursor-pointer hover:border-[var(--accent-gold)]/30 hover:shadow-[0_4px_16px_rgba(232,170,36,0.06)] transition-all" onClick={() => setSelectedRFQ(rfq)}>
@@ -254,12 +397,12 @@ export default function AdminRFQs() {
                       <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[0.625rem] font-bold ${sts.bg} ${sts.color}`}>
                         {sts.label}
                       </span>
-                      <span className="font-mono text-[0.625rem] text-[var(--text-muted)]">{rfq.id}</span>
+                      <span className="font-mono text-[0.625rem] text-[var(--text-muted)]">{rfq.number}</span>
                     </div>
                     <h3 className="text-sm font-bold text-[var(--text-primary)] mb-1">{rfq.subject}</h3>
                     <div className="flex items-center gap-3 text-[0.625rem] text-[var(--text-muted)]">
-                      <span className="flex items-center gap-1"><Building size={10} /> {rfq.company}</span>
-                      <span>{rfq.country}</span>
+                      <span className="flex items-center gap-1"><Building size={10} /> {rfq.company || rfq.customerName}</span>
+                      {rfq.country && <span>{rfq.country}</span>}
                       <span>{rfq.items.length} item{rfq.items.length !== 1 ? 's' : ''}</span>
                       <span>{formatDate(rfq.createdAt)}</span>
                     </div>
@@ -293,8 +436,8 @@ export default function AdminRFQs() {
             {/* Header */}
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface)] px-6 py-4">
               <div>
-                <h2 className="font-display text-lg font-bold text-[var(--text-primary)]">{selectedRFQ.id}</h2>
-                <p className="text-xs text-[var(--text-muted)] mt-0.5">{formatDate(selectedRFQ.createdAt)} · {selectedRFQ.company}</p>
+                <h2 className="font-display text-lg font-bold text-[var(--text-primary)]">{selectedRFQ.number}</h2>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5">{formatDate(selectedRFQ.createdAt)} · {selectedRFQ.company || selectedRFQ.customerName}</p>
               </div>
               <button onClick={() => setSelectedRFQ(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-soft)] transition-colors"><X size={16} /></button>
             </div>
@@ -302,12 +445,13 @@ export default function AdminRFQs() {
             <div className="p-6 space-y-6">
               {/* Status + Urgency */}
               <div className="flex items-center gap-3">
-                <span className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold ${urgencyConfig[selectedRFQ.urgency].bg} ${urgencyConfig[selectedRFQ.urgency].color}`}>
-                  {(() => { const I = urgencyConfig[selectedRFQ.urgency].icon; return <I size={12} /> })()}
-                  {urgencyConfig[selectedRFQ.urgency].label}
-                </span>
-                <span className={`inline-flex items-center rounded-lg px-3 py-2 text-xs font-bold ${statusConfig[selectedRFQ.status].bg} ${statusConfig[selectedRFQ.status].color}`}>
-                  {statusConfig[selectedRFQ.status].label}
+                {(() => { const u = urgencyOf(selectedRFQ.urgency); const I = u.icon; return (
+                  <span className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold ${u.bg} ${u.color}`}>
+                    <I size={12} /> {u.label}
+                  </span>
+                ) })()}
+                <span className={`inline-flex items-center rounded-lg px-3 py-2 text-xs font-bold ${statusOf(selectedRFQ.status).bg} ${statusOf(selectedRFQ.status).color}`}>
+                  {statusOf(selectedRFQ.status).label}
                 </span>
               </div>
 
@@ -321,36 +465,53 @@ export default function AdminRFQs() {
                         <Send size={12} /> Mark as {statusConfig[statusFlow[statusFlow.indexOf(selectedRFQ.status) + 1]].label}
                       </button>
                     )}
-                    <button onClick={() => { toast(`Offer created from ${selectedRFQ.id}`, 'success'); navigate('/admin/offers') }} className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--accent-gold)]/20 bg-[var(--accent-gold)]/10 px-3 py-2 text-xs font-bold text-[var(--accent-gold)] hover:bg-[var(--accent-gold)]/20 transition-colors">
+                    <button onClick={() => { setRespondTarget(selectedRFQ); setRespondMessage('') }} className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--accent-blue)]/20 bg-[var(--accent-blue)]/10 px-3 py-2 text-xs font-bold text-[var(--accent-blue)] hover:bg-[var(--accent-blue)]/20 transition-colors">
+                      <Mail size={12} /> Respond to Customer
+                    </button>
+                    <button onClick={() => { setNoteTarget(selectedRFQ); setNoteText('') }} className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-soft)] px-3 py-2 text-xs font-bold text-[var(--text-secondary)] hover:border-[var(--accent-gold)] transition-colors">
+                      <StickyNote size={12} /> Add Internal Note
+                    </button>
+                    <button onClick={() => { setOfferTarget(selectedRFQ); setOfferPrice('') }} className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--accent-gold)]/20 bg-[var(--accent-gold)]/10 px-3 py-2 text-xs font-bold text-[var(--accent-gold)] hover:bg-[var(--accent-gold)]/20 transition-colors">
                       <HandCoins size={12} /> Create Offer
                     </button>
                   </div>
                   <div>
                     <label className="text-[0.625rem] font-bold text-[var(--text-muted)] mb-1 block">Assign to</label>
-                    <div className="flex flex-wrap gap-1.5">
-                      {assignees.map((a) => (
-                        <button key={a} onClick={() => handleAssign(selectedRFQ.id, a)} className={`rounded-lg px-2.5 py-1 text-[0.625rem] font-bold transition-all ${selectedRFQ.assignedTo === a ? 'bg-[var(--accent-gold)] text-[var(--btn-blue-text)]' : 'bg-[var(--surface-soft)] border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent-gold)]'}`}>
-                          {a}
-                        </button>
-                      ))}
-                    </div>
+                    {assignees.length === 0 ? (
+                      <p className="text-[0.625rem] text-[var(--text-muted)]">No assignable team members found.</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5">
+                        {assignees.map((a) => (
+                          <button key={a.id} onClick={() => handleAssign(selectedRFQ.id, a.id, a.name)} className={`rounded-lg px-2.5 py-1 text-[0.625rem] font-bold transition-all ${selectedRFQ.assignedToId === a.id ? 'bg-[var(--accent-gold)] text-[var(--btn-blue-text)]' : 'bg-[var(--surface-soft)] border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent-gold)]'}`}>
+                            {a.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
 
-              {/* Subject */}
+              {/* Subject / Request */}
               <div className="rounded-xl border border-[var(--border)] p-4">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] mb-2">Subject</h3>
-                <p className="text-sm font-bold text-[var(--text-primary)]">{selectedRFQ.subject}</p>
-                <p className="text-xs text-[var(--text-secondary)] mt-2">{selectedRFQ.message}</p>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] mb-2">Request</h3>
+                <p className="text-sm font-bold text-[var(--text-primary)]">{selectedRFQ.message || selectedRFQ.subject}</p>
+                <div className="grid grid-cols-2 gap-2 mt-3">
+                  {selectedRFQ.partNumber && <div className="flex items-center gap-2"><Package size={12} className="text-[var(--text-muted)]" /><span className="text-xs text-[var(--text-secondary)]">Part: {selectedRFQ.partNumber}</span></div>}
+                  {selectedRFQ.brand && <div className="flex items-center gap-2"><FileText size={12} className="text-[var(--text-muted)]" /><span className="text-xs text-[var(--text-secondary)]">Brand: {selectedRFQ.brand}</span></div>}
+                  {selectedRFQ.deliveryLocation && <div className="flex items-center gap-2"><MapPin size={12} className="text-[var(--text-muted)]" /><span className="text-xs text-[var(--text-secondary)]">Deliver to: {selectedRFQ.deliveryLocation}</span></div>}
+                </div>
+                {selectedRFQ.internalNotes && (
+                  <p className="text-xs text-[var(--text-muted)] mt-3 pt-3 border-t border-[var(--border)]">Customer notes: {selectedRFQ.internalNotes}</p>
+                )}
               </div>
 
               {/* Items */}
               <div className="rounded-xl border border-[var(--border)] p-4">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] mb-3">Requested Items ({selectedRFQ.items.length})</h3>
                 <div className="space-y-2">
-                  {selectedRFQ.items.map((item, i) => (
-                    <div key={i} className="flex items-center justify-between py-2 border-b border-[var(--border)] last:border-0">
+                  {selectedRFQ.items.map((item) => (
+                    <div key={item.id} className="flex items-center justify-between py-2 border-b border-[var(--border)] last:border-0">
                       <div>
                         <p className="text-xs font-semibold text-[var(--text-primary)]">{item.productName}</p>
                         {item.notes && <p className="text-[0.625rem] text-[var(--text-muted)]">{item.notes}</p>}
@@ -361,16 +522,139 @@ export default function AdminRFQs() {
                 </div>
               </div>
 
+              {/* Notes & Responses */}
+              {selectedRFQ.notes.length > 0 && (
+                <div className="rounded-xl border border-[var(--border)] p-4">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] mb-3">Notes & Responses ({selectedRFQ.notes.length})</h3>
+                  <div className="space-y-3">
+                    {selectedRFQ.notes.map((n) => (
+                      <div key={n.id} className="border-b border-[var(--border)] last:border-0 pb-3 last:pb-0">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[0.625rem] font-bold text-[var(--text-secondary)]">{n.authorName}</span>
+                          <div className="flex items-center gap-2">
+                            <span className={`rounded px-1.5 py-0.5 text-[0.5625rem] font-bold ${n.isInternal ? 'bg-[var(--surface-soft)] text-[var(--text-muted)]' : 'bg-[var(--accent-blue)]/10 text-[var(--accent-blue)]'}`}>
+                              {n.isInternal ? 'Internal' : 'Reply'}
+                            </span>
+                            <span className="text-[0.625rem] text-[var(--text-muted)]">{formatDate(n.createdAt)}</span>
+                          </div>
+                        </div>
+                        <p className="text-xs text-[var(--text-secondary)]">{n.note}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Customer */}
               <div className="rounded-xl border border-[var(--border)] p-4 space-y-2">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Customer</h3>
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="flex items-center gap-2"><User size={12} className="text-[var(--text-muted)]" /><span className="text-xs text-[var(--text-secondary)]">{selectedRFQ.customerName}</span></div>
-                  <div className="flex items-center gap-2"><Mail size={12} className="text-[var(--text-muted)]" /><span className="text-xs text-[var(--text-secondary)]">{selectedRFQ.customerEmail}</span></div>
-                  <div className="flex items-center gap-2"><Phone size={12} className="text-[var(--text-muted)]" /><span className="text-xs text-[var(--text-secondary)]">{selectedRFQ.customerPhone}</span></div>
-                  <div className="flex items-center gap-2"><MapPin size={12} className="text-[var(--text-muted)]" /><span className="text-xs text-[var(--text-secondary)]">{selectedRFQ.country}</span></div>
+                  <div className="flex items-center gap-2"><User size={12} className="text-[var(--text-muted)]" /><span className="text-xs text-[var(--text-secondary)]">{selectedRFQ.customerName || '—'}</span></div>
+                  <div className="flex items-center gap-2"><Mail size={12} className="text-[var(--text-muted)]" /><span className="text-xs text-[var(--text-secondary)]">{selectedRFQ.customerEmail || '—'}</span></div>
+                  <div className="flex items-center gap-2"><Phone size={12} className="text-[var(--text-muted)]" /><span className="text-xs text-[var(--text-secondary)]">{selectedRFQ.customerPhone || '—'}</span></div>
+                  <div className="flex items-center gap-2"><MapPin size={12} className="text-[var(--text-muted)]" /><span className="text-xs text-[var(--text-secondary)]">{selectedRFQ.country || '—'}</span></div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Offer Modal */}
+      {offerTarget && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setOfferTarget(null)}>
+          <div className="w-full max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-display text-base font-bold text-[var(--text-primary)]">Create Offer</h3>
+              <button onClick={() => setOfferTarget(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)]"><X size={16} /></button>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+              <HandCoins size={13} className="text-[var(--accent-gold)]" />
+              <span>From {offerTarget.number} · {offerTarget.customerName}</span>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-[var(--text-secondary)] mb-1.5">Offered Price (USD)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={offerPrice}
+                onChange={(e) => setOfferPrice(e.target.value)}
+                placeholder="0.00"
+                aria-label="Offered price"
+                className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] py-2.5 px-4 text-sm font-mono text-[var(--text-primary)] focus:border-[var(--accent-gold)]"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button onClick={() => setOfferTarget(null)} className="rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-2.5 text-xs font-bold text-[var(--text-secondary)] hover:border-[var(--text-muted)] transition-colors">Cancel</button>
+              <button onClick={handleCreateOffer} disabled={creatingOffer} className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--accent-gold)] px-4 py-2.5 text-xs font-extrabold text-[var(--btn-blue-text)] transition-all hover:brightness-95 disabled:opacity-50">
+                {creatingOffer ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+                {creatingOffer ? 'Creating...' : 'Create Offer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Respond Modal */}
+      {respondTarget && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setRespondTarget(null)}>
+          <div className="w-full max-w-lg rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-display text-base font-bold text-[var(--text-primary)]">Respond to Customer</h3>
+              <button onClick={() => setRespondTarget(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)]"><X size={16} /></button>
+            </div>
+            <p className="text-xs text-[var(--text-muted)]">
+              Emails {respondTarget.customerEmail || respondTarget.customerName} about {respondTarget.number}. The RFQ moves to “Quote Sent” if it was new or in review.
+            </p>
+            <div>
+              <label className="block text-xs font-bold text-[var(--text-secondary)] mb-1.5">Message</label>
+              <textarea
+                rows={5}
+                value={respondMessage}
+                onChange={(e) => setRespondMessage(e.target.value)}
+                placeholder="Write your reply to the customer..."
+                aria-label="Response message"
+                className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] py-2.5 px-4 text-sm text-[var(--text-primary)] focus:border-[var(--accent-gold)] resize-y"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button onClick={() => setRespondTarget(null)} className="rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-2.5 text-xs font-bold text-[var(--text-secondary)] hover:border-[var(--text-muted)] transition-colors">Cancel</button>
+              <button onClick={handleRespond} disabled={sendingResponse} className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--accent-blue)] px-4 py-2.5 text-xs font-extrabold text-white transition-all hover:brightness-95 disabled:opacity-50">
+                {sendingResponse ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                {sendingResponse ? 'Sending...' : 'Send Response'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Internal Note Modal */}
+      {noteTarget && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setNoteTarget(null)}>
+          <div className="w-full max-w-lg rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-display text-base font-bold text-[var(--text-primary)]">Add Internal Note</h3>
+              <button onClick={() => setNoteTarget(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)]"><X size={16} /></button>
+            </div>
+            <p className="text-xs text-[var(--text-muted)]">Internal notes are visible to your team only — the customer is never notified.</p>
+            <div>
+              <label className="block text-xs font-bold text-[var(--text-secondary)] mb-1.5">Note</label>
+              <textarea
+                rows={4}
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                placeholder="Add context for your team..."
+                aria-label="Internal note"
+                className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] py-2.5 px-4 text-sm text-[var(--text-primary)] focus:border-[var(--accent-gold)] resize-y"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button onClick={() => setNoteTarget(null)} className="rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-2.5 text-xs font-bold text-[var(--text-secondary)] hover:border-[var(--text-muted)] transition-colors">Cancel</button>
+              <button onClick={handleAddNote} disabled={addingNote} className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--accent-gold)] px-4 py-2.5 text-xs font-extrabold text-[var(--btn-blue-text)] transition-all hover:brightness-95 disabled:opacity-50">
+                {addingNote ? <Loader2 size={14} className="animate-spin" /> : <StickyNote size={14} />}
+                {addingNote ? 'Saving...' : 'Add Note'}
+              </button>
             </div>
           </div>
         </div>

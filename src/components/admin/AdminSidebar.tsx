@@ -75,8 +75,10 @@ export function AdminSidebar() {
       if (cancelled) return
       setBadges({
         '/admin/orders': { count: stats.pendingOrders || 0, color: 'gold' },
-        '/admin/rfqs': { count: (stats.newRfqs || 0) + (stats.urgentRfqs || 0) + (stats.emergencyRfqs || 0), color: 'danger' },
-        '/admin/messages': { count: 0, color: 'teal' },
+        // Count of unactioned (status 'new') RFQs. urgency is a separate axis,
+        // so adding urgent/emergency double-counts the same records.
+        '/admin/rfqs': { count: stats.newRfqs || 0, color: 'danger' },
+        '/admin/messages': { count: stats.newMessages || 0, color: 'teal' },
       })
     }).catch(() => {})
     return () => { cancelled = true }
@@ -85,11 +87,14 @@ export function AdminSidebar() {
   // Role-based visibility — using actual role names from Prisma schema
   const ownerRoles = ['owner']
   const managerRoles = ['owner', 'store-manager', 'inventory-manager']
+  // PUT /admin/settings requires store-manager — hide the page from roles that
+  // could open it but always get 403 on Save.
+  const settingsRoles = ['owner', 'store-manager']
   
   const canView = (path: string): boolean => {
     const role = adminUser?.role || 'owner'
     if (path === '/admin/users' || path === '/admin/audit-log') return ownerRoles.includes(role)
-    if (path === '/admin/settings') return managerRoles.includes(role)
+    if (path === '/admin/settings') return settingsRoles.includes(role)
     if (path === '/admin/media' || path === '/admin/categories' || path === '/admin/brands' || path === '/admin/industries') return managerRoles.includes(role)
     return true
   }

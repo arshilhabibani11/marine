@@ -6,11 +6,11 @@ interface CreateCustomerModalProps {
   onClose: () => void
   onCreated: () => void
   onToast: (message: string, type: 'success' | 'error' | 'info') => void
-  onCreateCustomer: (data: { name: string; email: string; phone: string; company: string; country: string; city: string }) => Promise<void>
+  onCreateCustomer: (data: { name: string; email: string; password: string; phone: string; company: string; country: string; city: string }) => Promise<void>
 }
 
 export function CreateCustomerModal({ open, onClose, onCreated, onToast, onCreateCustomer }: CreateCustomerModalProps) {
-  const [newCustomer, setNewCustomer] = useState({ name: '', email: '', phone: '', company: '', country: '', city: '' })
+  const [newCustomer, setNewCustomer] = useState({ name: '', email: '', password: '', phone: '', company: '', country: '', city: '' })
   const [loading, setLoading] = useState(false)
 
   const inputClass = 'w-full rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] py-2.5 px-4 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] transition-all focus:border-[var(--accent-gold)]'
@@ -20,10 +20,14 @@ export function CreateCustomerModal({ open, onClose, onCreated, onToast, onCreat
       onToast('Name and email are required', 'error')
       return
     }
+    if (newCustomer.password.length < 8) {
+      onToast('Password must be at least 8 characters', 'error')
+      return
+    }
     setLoading(true)
     try {
       await onCreateCustomer(newCustomer)
-      setNewCustomer({ name: '', email: '', phone: '', company: '', country: '', city: '' })
+      setNewCustomer({ name: '', email: '', password: '', phone: '', company: '', country: '', city: '' })
       onToast('Customer created', 'success')
       onCreated()
       onClose()
@@ -51,6 +55,10 @@ export function CreateCustomerModal({ open, onClose, onCreated, onToast, onCreat
           <div>
             <label className="block text-[0.625rem] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Email *</label>
             <input type="email" value={newCustomer.email} onChange={(e) => setNewCustomer((p) => ({ ...p, email: e.target.value }))} placeholder="contact@company.com" className={inputClass} />
+          </div>
+          <div>
+            <label className="block text-[0.625rem] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Password *</label>
+            <input type="password" value={newCustomer.password} onChange={(e) => setNewCustomer((p) => ({ ...p, password: e.target.value }))} placeholder="Minimum 8 characters" className={inputClass} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

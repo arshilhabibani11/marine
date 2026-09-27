@@ -227,7 +227,12 @@ export interface Rfq {
   status: string
   customer?: { id: string; name: string; email: string; phone?: string | null } | null
   assignedTo?: string | null
+  assignee?: { id: string; name: string; email?: string | null } | null
+  items?: Array<{ id: string; productName: string; quantity?: number | null; unit?: string | null; notes?: string | null }> | null
+  rfqNotes?: Array<{ id: string; note: string; isInternal: boolean; createdAt: string; author?: { id?: string; name: string; email?: string | null } | null }> | null
+  internalNotes?: string | null
   responseDeadline?: string | null
+  firstResponseAt?: string | null
   createdAt: string
   updatedAt?: string | null
 }
@@ -254,9 +259,14 @@ export interface Offer {
   counterPrice?: number | null
   message?: string | null
   status: string
+  quantity?: number | null
+  adminNotes?: string | null
+  expiresAt?: string | null
+  respondedAt?: string | null
   createdAt: string
   updatedAt?: string | null
   product?: { name: string; sku: string; regularPrice: number } | null
+  customer?: { id: string; name: string; company?: string | null; country?: string | null } | null
   items?: OfferItem[]
   rfqNumber?: string | null
   rfqId?: string | null
@@ -293,11 +303,20 @@ export interface Customer {
   totalSpent?: number | null
   tags?: string[]
   notes?: string | null
+  internalNotes?: string | null
   createdAt: string
   _count?: {
     orders?: number
     rfqs?: number
   }
+  orders?: Array<{
+    id: string
+    orderNumber?: string
+    total?: number
+    status?: string
+    createdAt: string
+    _count?: { items?: number }
+  }>
 }
 
 // ─── Message (Contact Form) ────────────────────────────────────
@@ -389,6 +408,7 @@ export interface DashboardStats {
   emergencyRfqs: number
   totalOffers: number
   newOffers: number
+  newMessages?: number
   inStockProducts?: number
   saleProducts?: number
   newArrivals?: number

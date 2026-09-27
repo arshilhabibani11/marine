@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { History, Search, ChevronLeft, ChevronRight } from 'lucide-react'
 import { admin } from '../../../lib/api'
+import { useStore } from '../../../store/useStore'
 
 
 interface AuditEntry {
@@ -9,11 +10,14 @@ interface AuditEntry {
   entityType: string
   entityName: string
   actorEmail: string
-  timestamp: string
+  createdAt: string
   details?: string
 }
 
 export function AuditLogViewer() {
+  // /admin/audit is owner-only (routes/admin/audit.ts + AdminSidebar), so the
+  // widget is hidden for every other role instead of silently 403-ing.
+  const isOwner = useStore((s) => s.adminUser?.role === 'owner')
   const [logs, setLogs] = useState<AuditEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -22,23 +26,26 @@ export function AuditLogViewer() {
   const [totalPages, setTotalPages] = useState(1)
 
   const fetchLogs = useCallback(async () => {
+    if (!isOwner) return
     setLoading(true)
     try {
       const params: Record<string, string> = { page: String(page), limit: '20' }
       if (search) params.search = search
       if (entityFilter) params.entityType = entityFilter
-      const res = await admin.audit.list(params) as unknown as { data?: { logs?: AuditEntry[]; pagination?: { totalPages: number } }; logs?: AuditEntry[] }
-      setLogs(res?.data?.logs || res?.logs || [])
-      setTotalPages(res.data?.pagination?.totalPages || 1)
+      const res = await admin.audit.list(params)
+      setLogs((res.logs || []) as unknown as AuditEntry[])
+      setTotalPages(res.pagination?.totalPages || 1)
     } catch {
       console.warn('[AuditLogViewer] Failed to fetch audit logs')
       setLogs([])
     } finally {
       setLoading(false)
     }
-  }, [page, search, entityFilter])
+  }, [page, search, entityFilter, isOwner])
 
   useEffect(() => { fetchLogs() }, [fetchLogs])
+
+  if (!isOwner) return null
 
   const actionColor = (action: string) => {
     if (action.includes('create') || action.includes('add')) return 'text-[var(--success)]'
@@ -70,7 +77,7 @@ export function AuditLogViewer() {
           <option value="rfq">RFQs</option>
           <option value="offer">Offers</option>
           <option value="customer">Customers</option>
-          <option value="settings">Settings</option>
+          <option value="store_settings">Settings</option>
         </select>
       </div>
 
@@ -93,7 +100,7 @@ export function AuditLogViewer() {
                 by {log.actorEmail}
               </span>
               <span className="ml-auto text-[0.625rem] text-[var(--text-muted)] whitespace-nowrap shrink-0">
-                {new Date(log.timestamp).toLocaleString()}
+                {new Date(log.createdAt).toLocaleString()}
               </span>
             </div>
           ))

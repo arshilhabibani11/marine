@@ -56,7 +56,9 @@ export async function listMediaAssets(params: { search?: string; page?: number; 
   if (params.search) {
     where.OR = [
       { filename: { contains: params.search, mode: 'insensitive' } },
+      { originalName: { contains: params.search, mode: 'insensitive' } },
       { altText: { contains: params.search, mode: 'insensitive' } },
+      { label: { contains: params.search, mode: 'insensitive' } },
     ]
   }
 
@@ -77,7 +79,13 @@ export async function getMediaUsage(assetId: string) {
     where: { OR: [{ mediaAssetId: assetId }, { url: asset.url }] },
     include: { product: { select: { id: true, name: true, sku: true } } },
   })
-  return { usage }
+  return {
+    usage: usage.map((u) => ({
+      productId: u.product.id,
+      productName: u.product.name,
+      productSku: u.product.sku,
+    })),
+  }
 }
 
 // ─── Mutations ─────────────────────────────────────────────────

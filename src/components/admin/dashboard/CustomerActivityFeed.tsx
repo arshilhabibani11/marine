@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { Activity, ShoppingCart, FileText } from 'lucide-react'
+import { orderCustomerName } from './orderFields'
 
 interface Props {
   orders: any[]
@@ -21,8 +22,8 @@ export function CustomerActivityFeed({ orders, rfqs }: Props) {
         icon: ShoppingCart,
         color: 'text-[var(--accent-blue)]',
         bg: 'bg-[var(--accent-blue)]/10',
-        title: `Order ${order.id?.slice(0, 8) || 'placed'}`,
-        detail: `${order.customerName || order.email || 'Customer'} — $${(order.total || 0).toLocaleString()} (${order.status || 'pending'})`,
+        title: `Order ${order.orderNumber || order.id?.slice(0, 8) || 'placed'}`,
+        detail: `${orderCustomerName(order)} — $${(order.total || 0).toLocaleString()} (${order.status || 'pending'})`,
         time: createdAt,
         sortTime: createdAt.getTime(),
       })

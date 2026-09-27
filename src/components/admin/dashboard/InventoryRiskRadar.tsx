@@ -24,7 +24,7 @@ export function InventoryRiskRadar({ products, orders }: Props) {
 
     const risks = products.map((p: any) => {
       const stock = p.stockCount || 0
-      const threshold = p.lowStockThreshold || 5
+      const threshold = p.lowStockThreshold || 10
       const totalSold = productOrderMap.get(p.id) || 0
       const daysSinceAdded = Math.max(1, (now - new Date(p.createdAt || now).getTime()) / DAY)
       const velocity = totalSold / daysSinceAdded

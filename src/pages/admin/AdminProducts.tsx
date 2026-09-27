@@ -11,6 +11,7 @@ import { ProductOfferModal } from '../../components/admin/ProductOfferModal'
 import { Plus, Upload } from 'lucide-react'
 import Papa from 'papaparse'
 import { admin } from '../../lib/api'
+import { downloadCsv } from '../../lib/utils'
 import type { ApiBrand, ApiCategory, ApiProduct, Pagination } from '../../lib/api-types'
 
 const ITEMS_PER_PAGE = 20
@@ -171,25 +172,14 @@ export default function AdminProducts() {
     if (filterCondition) result = result.filter((p) => p.condition === filterCondition)
     if (filterAvailability) result = result.filter((p) => p.availability === filterAvailability)
     if (filterStatus) result = result.filter((p) => (p.status || 'draft') === filterStatus)
-    if (filterOnSale) result = result.filter((p) => p.onSale)
+    if (filterOnSale) result = result.filter((p) => p.salePrice != null)
     if (filterNewArrival) result = result.filter((p) => p.isNewArrival)
 
-    result.sort((a, b) => {
-      let cmp = 0
-      switch (sortKey) {
-        case 'name': cmp = a.name.localeCompare(b.name); break
-        case 'sku': cmp = a.sku.localeCompare(b.sku); break
-        case 'brand': cmp = getBrandName(a.brand).localeCompare(getBrandName(b.brand)); break
-        case 'category': cmp = getCategoryName(a.category).localeCompare(getCategoryName(b.category)); break
-        case 'price': cmp = (a.onSale && a.salePrice ? a.salePrice : a.price) - (b.onSale && b.salePrice ? b.salePrice : b.price); break
-        case 'stock': cmp = a.stockCount - b.stockCount; break
-        case 'condition': cmp = a.condition.localeCompare(b.condition); break
-        case 'status': cmp = (a.status || 'draft').localeCompare(b.status || 'draft'); break
-      }
-      return sortDir === 'asc' ? cmp : -cmp
-    })
+    // Sorting is authoritative on the server (productQueries.listProducts) so the
+    // order is correct across the whole catalog, not just this page. Re-sorting
+    // here would only reorder the current page and break that global order.
     return result
-  }, [productList, search, filterCategory, filterBrand, filterCondition, filterAvailability, filterStatus, filterOnSale, filterNewArrival, sortKey, sortDir])
+  }, [productList, search, filterCategory, filterBrand, filterCondition, filterAvailability, filterStatus, filterOnSale, filterNewArrival])
 
   const totalPages = pagination?.totalPages || Math.ceil(filteredProducts.length / ITEMS_PER_PAGE)
   const totalItems = pagination?.total ?? filteredProducts.length
@@ -419,16 +409,20 @@ export default function AdminProducts() {
     }
   }
 
-  const handleExportCsv = () => {
-    const headers = ['Name', 'SKU', 'Brand', 'Category', 'Price', 'Sale Price', 'Stock', 'Condition', 'Availability', 'Status']
-    const rows = filteredProducts.map((p) => [p.name, p.sku, getBrandName(p.brand), getCategoryName(p.category), p.price.toString(), p.salePrice?.toString() || '', p.stockCount.toString(), p.condition, p.availability, p.status || 'draft'])
-    const csv = [headers.join(','), ...rows.map((r) => r.map((c) => `"${c}"`).join(','))].join('\n')
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url; link.download = `products-export-${new Date().toISOString().split('T')[0]}.csv`; link.click()
-    URL.revokeObjectURL(url)
-    toast('Products exported to CSV', 'success')
+  const [exporting, setExporting] = useState(false)
+
+  // Exports the full product dataset from the server (not just the current page).
+  const handleExportCsv = async () => {
+    setExporting(true)
+    try {
+      const csv = await admin.products.exportCsv()
+      downloadCsv(csv, `products-export-${new Date().toISOString().split('T')[0]}.csv`)
+      toast('Products exported to CSV', 'success')
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Export failed', 'error')
+    } finally {
+      setExporting(false)
+    }
   }
 
   return (
@@ -468,6 +462,7 @@ export default function AdminProducts() {
         onToggleFilters={() => setShowFilters((v) => !v)}
         activeFilterCount={activeFilterCount}
         onExportCsv={handleExportCsv}
+        exporting={exporting}
         filterCategory={filterCategory}
         onFilterCategoryChange={setFilterCategory}
         filterBrand={filterBrand}

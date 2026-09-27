@@ -20,7 +20,8 @@ import {
   Loader2,
 } from 'lucide-react'
 
-type UserRole = 'owner' | 'admin' | 'editor' | 'viewer'
+// Must mirror the backend role enum (routes/admin/users.ts + auth ROLE_HIERARCHY).
+type UserRole = 'owner' | 'store-manager' | 'inventory-manager' | 'sales-agent' | 'content-manager' | 'viewer'
 
 interface AdminUser {
   id: string
@@ -48,14 +49,16 @@ function mapApiUser(u: ApiAdminUser): AdminUser {
 }
 
 const roleConfig: Record<UserRole, { label: string; color: string; bg: string; permissions: string[] }> = {
-  owner: { label: 'Owner', color: 'text-[var(--accent-gold)]', bg: 'bg-[var(--accent-gold)]/10', permissions: ['Full Access', 'Manage Users', 'Billing', 'Delete Account'] },
-  admin: { label: 'Admin', color: 'text-[var(--accent-blue)]', bg: 'bg-[var(--accent-blue)]/10', permissions: ['Manage Products', 'Manage Orders', 'Manage Settings', 'View Reports'] },
-  editor: { label: 'Editor', color: 'text-[var(--accent-teal)]', bg: 'bg-[var(--accent-teal)]/10', permissions: ['Edit Products', 'Edit Media', 'View Orders', 'Reply Messages'] },
-  viewer: { label: 'Viewer', color: 'text-[var(--text-muted)]', bg: 'bg-[var(--text-muted)]/10', permissions: ['View Products', 'View Orders', 'View Reports'] },
+  'owner': { label: 'Owner', color: 'text-[var(--accent-gold)]', bg: 'bg-[var(--accent-gold)]/10', permissions: ['Full Access', 'Manage Products', 'Manage Orders', 'Manage Settings', 'Manage Users', 'View Reports', 'Edit Products', 'Edit Media', 'View Orders', 'Reply Messages', 'View Products', 'Billing', 'Delete Account'] },
+  'store-manager': { label: 'Store Manager', color: 'text-[var(--accent-blue)]', bg: 'bg-[var(--accent-blue)]/10', permissions: ['Manage Products', 'Manage Orders', 'Manage Settings', 'View Reports', 'Edit Products', 'Edit Media', 'View Orders', 'Reply Messages', 'View Products'] },
+  'inventory-manager': { label: 'Inventory Manager', color: 'text-[var(--accent-blue)]', bg: 'bg-[var(--accent-blue)]/10', permissions: ['Manage Products', 'View Reports', 'Edit Products', 'Edit Media', 'View Orders', 'View Products'] },
+  'sales-agent': { label: 'Sales Agent', color: 'text-[var(--accent-teal)]', bg: 'bg-[var(--accent-teal)]/10', permissions: ['View Reports', 'View Orders', 'Reply Messages', 'View Products'] },
+  'content-manager': { label: 'Content Manager', color: 'text-[var(--accent-teal)]', bg: 'bg-[var(--accent-teal)]/10', permissions: ['Edit Products', 'Edit Media', 'View Products'] },
+  'viewer': { label: 'Viewer', color: 'text-[var(--text-muted)]', bg: 'bg-[var(--text-muted)]/10', permissions: ['View Products', 'View Orders', 'View Reports'] },
 }
 
 const allPermissions = [
-  'Manage Products', 'Manage Orders', 'Manage Settings', 'Manage Users', 'View Reports',
+  'Full Access', 'Manage Products', 'Manage Orders', 'Manage Settings', 'Manage Users', 'View Reports',
   'Edit Products', 'Edit Media', 'View Orders', 'Reply Messages', 'View Products',
   'Billing', 'Delete Account',
 ]
@@ -71,7 +74,7 @@ export default function AdminUsers() {
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [editRoleUser, setEditRoleUser] = useState<string | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const [deactivateTarget, setDeactivateTarget] = useState<string | null>(null)
   const [inviteForm, setInviteForm] = useState({ email: '', name: '', role: 'viewer' as UserRole })
 
   const fetchUsers = useCallback(async () => {
@@ -128,17 +131,20 @@ export default function AdminUsers() {
     }
   }
 
-  const handleDeleteUser = async () => {
-    if (!deleteTarget) return
-    const name = users.find((u) => u.id === deleteTarget)?.name || 'User'
+  const handleDeactivateUser = async () => {
+    if (!deactivateTarget) return
+    const id = deactivateTarget
+    const name = users.find((u) => u.id === id)?.name || 'User'
     try {
-      await admin.users.deactivate(deleteTarget)
-      setUsers((prev) => prev.filter((u) => u.id !== deleteTarget))
-      toast(`${name} removed`, 'success')
+      await admin.users.deactivate(id)
+      // Deactivate is a soft delete: keep the row so it reflects the real state.
+      setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, active: false } : u)))
+      setSelectedUser((prev) => (prev && prev.id === id ? { ...prev, active: false } : prev))
+      toast(`${name} deactivated`, 'success')
     } catch (err: unknown) {
-      toast(err instanceof Error ? err.message : 'Failed to remove user', 'error')
+      toast(err instanceof Error ? err.message : 'Failed to deactivate user', 'error')
     }
-    setDeleteTarget(null)
+    setDeactivateTarget(null)
   }
 
   const handleInvite = async () => {
@@ -252,7 +258,7 @@ export default function AdminUsers() {
                     <div className="flex items-center gap-0.5">
                       <button onClick={() => setSelectedUser(user)} className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--accent-gold)] hover:bg-[var(--gold-muted)] transition-colors"><Eye size={12} /></button>
                       <button onClick={() => setEditRoleUser(editRoleUser === user.id ? null : user.id)} className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--accent-blue)] hover:bg-[var(--accent-blue)]/10 transition-colors"><Pencil size={12} /></button>
-                      <button onClick={() => setDeleteTarget(user.id)} className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-danger/5 transition-colors"><Trash2 size={12} /></button>
+                      <button onClick={() => setDeactivateTarget(user.id)} className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-danger/5 transition-colors"><Trash2 size={12} /></button>
                     </div>
                   </td>
                 </tr>
@@ -364,7 +370,7 @@ export default function AdminUsers() {
   return (
     <>
     {mainContent}
-    <ConfirmDialog open={!!deleteTarget} title="Remove User" message="Are you sure you want to remove this user? They will lose access to the admin panel." confirmLabel="Remove" danger onConfirm={handleDeleteUser} onCancel={() => setDeleteTarget(null)} />
+    <ConfirmDialog open={!!deactivateTarget} title="Deactivate User" message="This user will be signed out and lose access to the admin panel until reactivated." confirmLabel="Deactivate" danger onConfirm={handleDeactivateUser} onCancel={() => setDeactivateTarget(null)} />
     </>
   )
 }

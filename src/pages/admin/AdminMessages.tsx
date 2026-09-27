@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useToast } from '../../components/admin/toast-context'
 import { AdminPagination } from '../../components/admin/AdminPagination'
-import { admin, api } from '../../lib/api'
+import { admin } from '../../lib/api'
 import type { ApiMessage } from '../../lib/api-types'
 import {
   Search,
@@ -14,33 +14,41 @@ import {
   Star,
   Paperclip,
   Loader2,
+  RotateCcw,
 } from 'lucide-react'
+import { ConfirmDialog } from '../../components/admin/ConfirmDialog'
 
 type MessageFolder = 'inbox' | 'sent' | 'starred' | 'trash'
 
 interface Message {
   id: string
   from: string
+  fromEmail: string
   fromCompany: string
   to: string
   subject: string
   body: string
-  folder: 'inbox' | 'sent'
+  folder: 'inbox' | 'sent' | 'trash'
   read: boolean
   starred: boolean
   createdAt: string
   attachments: string[]
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+type ToastFn = (message: string, type: 'success' | 'error' | 'info') => void
+
 function mapApiMessage(m: ApiMessage): Message {
   return {
     id: m.id,
     from: m.name || m.from || 'Unknown',
+    fromEmail: m.email || '',
     fromCompany: m.source || m.fromCompany || '',
     to: m.to || 'Admin',
     subject: m.subject || 'No Subject',
     body: m.message || m.body || '',
-    folder: m.status === 'replied' ? 'sent' as const : 'inbox' as const,
+    folder: m.status === 'replied' ? 'sent' as const : m.status === 'trashed' ? 'trash' as const : 'inbox' as const,
     read: m.status !== 'new',
     starred: m.isStarred ?? false,
     createdAt: m.createdAt || new Date().toISOString(),
@@ -50,10 +58,12 @@ function mapApiMessage(m: ApiMessage): Message {
 
 const ITEMS_PER_PAGE = 12
 
-function ComposeModal({ onClose, onSent, toast }: { onClose: () => void; onSent: () => void; toast: (message: string, type: 'success' | 'error' | 'info') => void }) {
-  const [to, setTo] = useState('')
-  const [subject, setSubject] = useState('')
-  const [body, setBody] = useState('')
+interface ComposeInitial { to?: string; subject?: string; body?: string }
+
+function ComposeModal({ onClose, onSent, toast, initial }: { onClose: () => void; onSent: () => void; toast: ToastFn; initial?: ComposeInitial }) {
+  const [to, setTo] = useState(initial?.to ?? '')
+  const [subject, setSubject] = useState(initial?.subject ?? '')
+  const [body, setBody] = useState(initial?.body ?? '')
   const [sending, setSending] = useState(false)
 
   const handleSend = async () => {
@@ -61,9 +71,14 @@ function ComposeModal({ onClose, onSent, toast }: { onClose: () => void; onSent:
       toast('To, subject, and message are required', 'error')
       return
     }
+    // The backend composeSchema requires a real email (z.string().email()).
+    if (!EMAIL_RE.test(to.trim())) {
+      toast('Enter a valid recipient email address', 'error')
+      return
+    }
     setSending(true)
     try {
-      await api.post('/admin/messages', { to, subject, message: body }, { auth: 'admin' })
+      await admin.messages.compose({ to: to.trim(), subject: subject.trim(), message: body })
       toast('Message sent', 'success')
       onSent()
     } catch (err: unknown) {
@@ -83,7 +98,7 @@ function ComposeModal({ onClose, onSent, toast }: { onClose: () => void; onSent:
         <div className="space-y-3">
           <div>
             <label className="block text-xs font-bold text-[var(--text-secondary)] mb-1.5">To</label>
-            <input type="text" value={to} onChange={(e) => setTo(e.target.value)} placeholder="Recipient name or email" className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] py-2.5 px-4 text-sm focus:border-[var(--accent-gold)]" />
+            <input type="email" value={to} onChange={(e) => setTo(e.target.value)} placeholder="recipient@example.com" className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] py-2.5 px-4 text-sm focus:border-[var(--accent-gold)]" />
           </div>
           <div>
             <label className="block text-xs font-bold text-[var(--text-secondary)] mb-1.5">Subject</label>
@@ -105,6 +120,54 @@ function ComposeModal({ onClose, onSent, toast }: { onClose: () => void; onSent:
   )
 }
 
+function ReplyModal({ message, onClose, onSent, toast }: { message: Message; onClose: () => void; onSent: () => void; toast: ToastFn }) {
+  const [body, setBody] = useState('')
+  const [sending, setSending] = useState(false)
+
+  const handleSend = async () => {
+    if (!body.trim()) {
+      toast('Enter a reply message', 'error')
+      return
+    }
+    setSending(true)
+    try {
+      // Uses POST /admin/messages/:id/reply — marks the thread replied and emails the sender.
+      await admin.messages.reply(message.id, body.trim())
+      toast('Reply sent', 'success')
+      onSent()
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Failed to send reply', 'error')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-lg rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="font-display text-lg font-bold text-[var(--text-primary)]">Reply</h3>
+          <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)]"><X size={16} /></button>
+        </div>
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] p-3">
+          <p className="text-xs font-bold text-[var(--text-primary)]">To: {message.from}{message.fromEmail ? ` <${message.fromEmail}>` : ''}</p>
+          <p className="text-xs text-[var(--text-muted)] mt-0.5">Subject: {message.subject}</p>
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-[var(--text-secondary)] mb-1.5">Message</label>
+          <textarea rows={6} value={body} onChange={(e) => setBody(e.target.value)} placeholder="Write your reply..." className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] py-2.5 px-4 text-sm focus:border-[var(--accent-gold)] resize-y" />
+        </div>
+        <div className="flex gap-2">
+          <button onClick={handleSend} disabled={sending} className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--accent-gold)] px-4 py-2.5 text-xs font-bold text-[var(--btn-blue-text)] disabled:opacity-50">
+            {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Send Reply
+          </button>
+          <button onClick={onClose} className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-2.5 text-xs font-bold text-[var(--text-secondary)]">Cancel</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function AdminMessages() {
   const { toast } = useToast()
   const [messages, setMessages] = useState<Message[]>([])
@@ -113,6 +176,9 @@ export default function AdminMessages() {
   const [folder, setFolder] = useState<MessageFolder>('inbox')
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null)
   const [composing, setComposing] = useState(false)
+  const [composeInitial, setComposeInitial] = useState<ComposeInitial>({})
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null)
+  const [destroyTarget, setDestroyTarget] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [serverTotal, setServerTotal] = useState(0)
 
@@ -123,7 +189,8 @@ export default function AdminMessages() {
       if (search.trim()) params.search = search.trim()
       params.page = String(page)
       params.limit = String(ITEMS_PER_PAGE)
-      if (folder === 'inbox' || folder === 'sent') params.folder = folder
+      // Every folder (including trash) is filtered server-side.
+      params.folder = folder
       const res = await admin.messages.list(params)
       setMessages((res.messages || []).map(mapApiMessage))
       setServerTotal(res.pagination?.total ?? 0)
@@ -143,7 +210,6 @@ export default function AdminMessages() {
   const filtered = useMemo(() => {
     let result = [...messages]
     if (folder === 'starred') result = result.filter((m) => m.starred)
-    else if (folder === 'trash') return []
     else result = result.filter((m) => m.folder === folder)
     if (search.trim()) {
       const q = search.toLowerCase()
@@ -197,7 +263,7 @@ export default function AdminMessages() {
     e?.stopPropagation()
     try {
       await admin.messages.delete(id)
-      toast('Message deleted', 'success')
+      toast('Message moved to Trash', 'info')
       setMessages((prev) => prev.filter((m) => m.id !== id))
       if (selectedMessage?.id === id) setSelectedMessage(null)
     } catch (err: unknown) {
@@ -205,17 +271,52 @@ export default function AdminMessages() {
     }
   }
 
-  const toggleStar = (id: string, e: React.MouseEvent) => {
+  const handleRestore = async (id: string, e?: React.MouseEvent) => {
+    e?.stopPropagation()
+    try {
+      await admin.messages.restore(id)
+      toast('Message restored to inbox', 'success')
+      setMessages((prev) => prev.filter((m) => m.id !== id))
+      if (selectedMessage?.id === id) setSelectedMessage(null)
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Restore failed', 'error')
+    }
+  }
+
+  const handleDestroy = async (id: string) => {
+    try {
+      await admin.messages.destroy(id)
+      toast('Message permanently deleted', 'success')
+      setMessages((prev) => prev.filter((m) => m.id !== id))
+      if (selectedMessage?.id === id) setSelectedMessage(null)
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Delete failed', 'error')
+    }
+  }
+
+  const toggleStar = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
-    setMessages((prev) => prev.map((m) => m.id === id ? { ...m, starred: !m.starred } : m))
-    if (selectedMessage?.id === id) setSelectedMessage((prev) => prev ? { ...prev, starred: !prev.starred } : prev)
+    const next = !(messages.find((m) => m.id === id)?.starred ?? false)
+    const apply = (starred: boolean) => {
+      setMessages((prev) => prev.map((m) => m.id === id ? { ...m, starred } : m))
+      setSelectedMessage((prev) => prev && prev.id === id ? { ...prev, starred } : prev)
+    }
+    apply(next)
+    try {
+      await admin.messages.star(id, next)
+      // Unstarring inside the Starred folder should drop it from the list.
+      if (folder === 'starred' && !next) setMessages((prev) => prev.filter((m) => m.id !== id))
+    } catch (err: unknown) {
+      apply(!next)
+      toast(err instanceof Error ? err.message : 'Failed to update star', 'error')
+    }
   }
 
   const folders: { id: MessageFolder; label: string; icon: typeof Inbox; count: number }[] = [
     { id: 'inbox', label: 'Inbox', icon: Inbox, count: messages.filter((m) => m.folder === 'inbox').length },
     { id: 'sent', label: 'Sent', icon: Send, count: messages.filter((m) => m.folder === 'sent').length },
     { id: 'starred', label: 'Starred', icon: Star, count: starredCount },
-    { id: 'trash', label: 'Trash', icon: Trash2, count: 0 },
+    { id: 'trash', label: 'Trash', icon: Trash2, count: messages.filter((m) => m.folder === 'trash').length },
   ]
 
   return (
@@ -225,7 +326,7 @@ export default function AdminMessages() {
           <h1 className="font-display text-2xl font-extrabold text-[var(--text-primary)]">Messages</h1>
           <p className="text-sm text-[var(--text-muted)] mt-1">{unreadCount} unread messages</p>
         </div>
-        <button onClick={() => setComposing(true)} className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent-gold)] px-4 py-2.5 text-xs font-bold text-[var(--btn-blue-text)] hover:shadow-[0_4px_12px_rgba(232,170,36,0.3)] transition-all">
+        <button onClick={() => { setComposeInitial({}); setComposing(true) }} className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent-gold)] px-4 py-2.5 text-xs font-bold text-[var(--btn-blue-text)] hover:shadow-[0_4px_12px_rgba(232,170,36,0.3)] transition-all">
           <Plus size={14} /> Compose
         </button>
       </div>
@@ -264,9 +365,15 @@ export default function AdminMessages() {
             ) : (
               paginated.map((msg) => (
                 <div key={msg.id} onClick={() => handleOpenMessage(msg)} className={`flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-[var(--surface-soft)] transition-colors ${!msg.read ? 'bg-[var(--accent-gold)]/[0.03]' : ''}`}>
-                  <button onClick={(e) => toggleStar(msg.id, e)} className="shrink-0">
-                    <Star size={14} className={msg.starred ? 'text-[var(--accent-gold)] fill-[var(--accent-gold)]' : 'text-[var(--text-muted)]/30 hover:text-[var(--accent-gold)]'} />
-                  </button>
+                  {folder === 'trash' ? (
+                    <button onClick={(e) => handleRestore(msg.id, e)} className="shrink-0" title="Restore to inbox">
+                      <RotateCcw size={14} className="text-[var(--text-muted)] hover:text-[var(--success)]" />
+                    </button>
+                  ) : (
+                    <button onClick={(e) => toggleStar(msg.id, e)} className="shrink-0">
+                      <Star size={14} className={msg.starred ? 'text-[var(--accent-gold)] fill-[var(--accent-gold)]' : 'text-[var(--text-muted)]/30 hover:text-[var(--accent-gold)]'} />
+                    </button>
+                  )}
                   <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[0.625rem] font-bold ${msg.read ? 'bg-[var(--surface-soft)] text-[var(--text-muted)]' : 'bg-[var(--accent-blue)] text-[var(--btn-blue-text)]'}`}>
                     {msg.from.split(' ').map((n) => n[0]).join('').slice(0, 2)}
                   </div>
@@ -298,8 +405,14 @@ export default function AdminMessages() {
               <h2 className="font-display text-sm font-bold text-[var(--text-primary)] truncate pr-4">{selectedMessage.subject}</h2>
               <div className="flex items-center gap-1">
                 <button onClick={(e) => toggleStar(selectedMessage.id, e)} className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--accent-gold)]"><Star size={14} className={selectedMessage.starred ? 'fill-[var(--accent-gold)] text-[var(--accent-gold)]' : ''} /></button>
-                <button onClick={(e) => handleArchive(selectedMessage.id, e)} className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--accent-teal)]"><Inbox size={14} /></button>
-                <button onClick={(e) => handleDelete(selectedMessage.id, e)} className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--danger)]"><Trash2 size={14} /></button>
+                {selectedMessage.folder !== 'trash' && (
+                  <button onClick={(e) => handleArchive(selectedMessage.id, e)} className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--accent-teal)]"><Inbox size={14} /></button>
+                )}
+                {selectedMessage.folder === 'trash' ? (
+                  <button onClick={() => setDestroyTarget(selectedMessage.id)} className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--danger)]" title="Delete forever"><Trash2 size={14} /></button>
+                ) : (
+                  <button onClick={(e) => handleDelete(selectedMessage.id, e)} className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--danger)]" title="Move to trash"><Trash2 size={14} /></button>
+                )}
                 <button onClick={() => setSelectedMessage(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-soft)]"><X size={16} /></button>
               </div>
             </div>
@@ -324,14 +437,33 @@ export default function AdminMessages() {
                   ))}
                 </div>
               )}
+              {selectedMessage.folder === 'trash' ? (
+                <div className="flex gap-2 pt-2">
+                  <button onClick={() => handleRestore(selectedMessage.id)} className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-soft)] px-3 py-2 text-xs font-bold text-[var(--text-secondary)] hover:border-[var(--success)] transition-colors">
+                    <RotateCcw size={12} /> Restore
+                  </button>
+                  <button onClick={() => setDestroyTarget(selectedMessage.id)} className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--danger)]/30 bg-[var(--danger)]/5 px-3 py-2 text-xs font-bold text-[var(--danger)] hover:bg-[var(--danger)]/10 transition-colors">
+                    <Trash2 size={12} /> Delete Forever
+                  </button>
+                </div>
+              ) : (
               <div className="flex gap-2 pt-2">
-                <button onClick={() => { setSelectedMessage(null); setComposing(true); toast('Reply composer opened', 'info') }} className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-soft)] px-3 py-2 text-xs font-bold text-[var(--text-secondary)] hover:border-[var(--accent-gold)] transition-colors">
+                <button onClick={() => { const m = selectedMessage; setSelectedMessage(null); setReplyingTo(m) }} className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-soft)] px-3 py-2 text-xs font-bold text-[var(--text-secondary)] hover:border-[var(--accent-gold)] transition-colors">
                   <Send size={12} /> Reply
                 </button>
-                <button onClick={() => { setSelectedMessage(null); setComposing(true); toast('Forward composer opened', 'info') }} className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-soft)] px-3 py-2 text-xs font-bold text-[var(--text-secondary)] hover:border-[var(--accent-teal)] transition-colors">
+                <button onClick={() => {
+                  const m = selectedMessage
+                  setSelectedMessage(null)
+                  setComposeInitial({
+                    subject: `Fwd: ${m.subject}`,
+                    body: `\n\n---------- Forwarded message ----------\nFrom: ${m.from}${m.fromEmail ? ` <${m.fromEmail}>` : ''}\nDate: ${formatTime(m.createdAt)}\n\n${m.body}`,
+                  })
+                  setComposing(true)
+                }} className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-soft)] px-3 py-2 text-xs font-bold text-[var(--text-secondary)] hover:border-[var(--accent-teal)] transition-colors">
                   Forward
                 </button>
               </div>
+              )}
             </div>
           </div>
         </div>
@@ -339,8 +471,22 @@ export default function AdminMessages() {
 
       {/* Compose Modal */}
       {composing && (
-        <ComposeModal onClose={() => setComposing(false)} onSent={() => { setComposing(false); fetchMessages() }} toast={toast} />
+        <ComposeModal onClose={() => setComposing(false)} onSent={() => { setComposing(false); fetchMessages() }} toast={toast} initial={composeInitial} />
       )}
+
+      {replyingTo && (
+        <ReplyModal message={replyingTo} onClose={() => setReplyingTo(null)} onSent={() => { setReplyingTo(null); fetchMessages() }} toast={toast} />
+      )}
+
+      <ConfirmDialog
+        open={!!destroyTarget}
+        title="Delete Forever"
+        message="This permanently deletes the message. This cannot be undone."
+        confirmLabel="Delete Forever"
+        danger
+        onConfirm={() => { if (destroyTarget) handleDestroy(destroyTarget); setDestroyTarget(null) }}
+        onCancel={() => setDestroyTarget(null)}
+      />
     </div>
   )
 }

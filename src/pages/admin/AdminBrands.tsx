@@ -34,7 +34,7 @@ function getEmptyForm(): BrandFormData {
   return { name: '', slug: '', sectors: [], description: '', website: '', country: '', logo: '' }
 }
 
-interface BrandItem { id: string; name: string; slug: string; sectors: string[]; logo: string; productCount?: number }
+interface BrandItem { id: string; name: string; slug: string; sectors: string[]; logo: string; description: string; website: string; country: string; productCount?: number }
 
 export default function AdminBrands() {
   const { toast } = useToast()
@@ -57,6 +57,9 @@ export default function AdminBrands() {
         slug: b.slug,
         sectors: b.sectors || [],
         logo: b.logoUrl || b.logo || '',
+        description: b.description || '',
+        website: b.website || '',
+        country: b.country || '',
         productCount: b._count?.products ?? b.productCount ?? 0,
       }))
       setAllBrands(items)
@@ -89,7 +92,7 @@ export default function AdminBrands() {
     const brand = allBrands.find((b) => b.id === brandId)
     if (!brand) return
     setEditingBrand(brandId)
-    setForm({ name: brand.name, slug: brand.slug, sectors: [...brand.sectors], description: '', website: '', country: '', logo: brand.logo || '' })
+    setForm({ name: brand.name, slug: brand.slug, sectors: [...brand.sectors], description: brand.description, website: brand.website, country: brand.country, logo: brand.logo || '' })
     setShowModal(true)
   }
 

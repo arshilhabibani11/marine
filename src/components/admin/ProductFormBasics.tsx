@@ -98,7 +98,7 @@ export function ProductFormBasics({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
           <label className={labelClass}>Category <span className="normal-case font-semibold text-[var(--text-muted)]">(optional)</span></label>
           <select
@@ -127,6 +127,25 @@ export function ProductFormBasics({
             <option value="refurbished">Refurbished</option>
             <option value="reconditioned">Reconditioned</option>
           </select>
+        </div>
+        <div>
+          <label className={labelClass}>Visibility</label>
+          <select
+            value={form.status}
+            onChange={(e) => updateField('status', e.target.value)}
+            className={getSelectClass('status')}
+            aria-label="Product visibility"
+          >
+            <option value="published">Published (live on storefront)</option>
+            <option value="draft">Draft (not visible)</option>
+            <option value="hidden">Hidden (unlisted)</option>
+            <option value="archived">Archived</option>
+          </select>
+          {form.status === 'draft' && (
+            <p className="mt-1 text-[0.625rem] font-semibold text-[var(--accent-gold)]">
+              Draft products do not appear on the storefront until published.
+            </p>
+          )}
         </div>
       </div>
 

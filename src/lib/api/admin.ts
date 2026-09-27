@@ -120,6 +120,8 @@ export const admin = {
       const qs = params ? '?' + new URLSearchParams(params).toString() : ''
       return api.get<{ rfqs: ApiRfq[]; pagination: Pagination }>(`/admin/rfqs${qs}`, { auth: 'admin' })
     },
+    assignees: () =>
+      api.get<{ users: { id: string; name: string }[] }>('/admin/rfqs/assignees', { auth: 'admin' }),
     get: (id: string) => api.get<{ rfq: ApiRfq }>(`/admin/rfqs/${id}`, { auth: 'admin' }),
     updateStatus: (id: string, status: string) =>
       api.patch<{ rfq: ApiRfq }>(`/admin/rfqs/${id}/status`, { status }, { auth: 'admin' }),
@@ -127,8 +129,10 @@ export const admin = {
       api.patch<{ rfq: ApiRfq }>(`/admin/rfqs/${id}/assign`, { assignedTo }, { auth: 'admin' }),
     addNote: (id: string, note: string, isInternal = true) =>
       api.post<{ note: { id: string; note: string; isInternal: boolean } }>(`/admin/rfqs/${id}/notes`, { note, isInternal }, { auth: 'admin' }),
-    respond: (id: string, message?: string) =>
-      api.patch<{ rfq: ApiRfq }>(`/admin/rfqs/${id}/respond`, { message }, { auth: 'admin' }),
+    respond: (id: string, message: string) =>
+      api.post<{ message: string }>(`/admin/rfqs/${id}/respond`, { message }, { auth: 'admin' }),
+    convertToOffer: (id: string, offeredPrice: number, message?: string) =>
+      api.post<{ offer: ApiOffer }>(`/admin/rfqs/${id}/convert-to-offer`, { offeredPrice, message }, { auth: 'admin' }),
   },
 
   // Offers
@@ -144,6 +148,14 @@ export const admin = {
       api.patch<{ offer: ApiOffer }>(`/admin/offers/${id}/counter`, { counterPrice }, { auth: 'admin' }),
     convertToOrder: (id: string) =>
       api.post<{ order: ApiOrder }>(`/admin/offers/${id}/convert-to-order`, undefined, { auth: 'admin' }),
+    exportCsv: async () => {
+      const res = await fetch(`${API_BASE}/admin/offers/export/csv`, {
+        headers: getAdminToken() ? { Authorization: `Bearer ${getAdminToken()}` } : undefined,
+        credentials: 'include',
+      })
+      if (!res.ok) throw new ApiError(res.status, 'Export failed')
+      return res.text()
+    },
   },
 
   // Customers
@@ -153,7 +165,7 @@ export const admin = {
       return api.get<{ customers: ApiCustomer[]; pagination: Pagination }>(`/admin/customers${qs}`, { auth: 'admin' })
     },
     get: (id: string) => api.get<{ customer: ApiCustomer }>(`/admin/customers/${id}`, { auth: 'admin' }),
-    create: (data: { name: string; email: string; phone?: string; company?: string; country?: string; city?: string }) =>
+    create: (data: { name: string; email: string; password: string; phone?: string; company?: string; country?: string; city?: string }) =>
       api.post<{ customer: ApiCustomer }>('/admin/customers', data, { auth: 'admin' }),
     updateStatus: (id: string, status: string) =>
       api.patch<{ customer: ApiCustomer }>(`/admin/customers/${id}/status`, { status }, { auth: 'admin' }),
@@ -166,9 +178,18 @@ export const admin = {
       return api.get<{ messages: ApiMessage[]; pagination: Pagination }>(`/admin/messages${qs}`, { auth: 'admin' })
     },
     get: (id: string) => api.get<{ message: ApiMessage }>(`/admin/messages/${id}`, { auth: 'admin' }),
+    compose: (data: { to: string; subject: string; message: string }) =>
+      api.post<{ message: string }>('/admin/messages', data, { auth: 'admin' }),
+    reply: (id: string, message: string) =>
+      api.post<{ message: string }>(`/admin/messages/${id}/reply`, { message }, { auth: 'admin' }),
     markRead: (id: string) => api.patch<{ message: ApiMessage }>(`/admin/messages/${id}/read`, undefined, { auth: 'admin' }),
+    star: (id: string, starred: boolean) => api.patch<{ message: ApiMessage }>(`/admin/messages/${id}/star`, { starred }, { auth: 'admin' }),
     archive: (id: string) => api.patch<{ message: ApiMessage }>(`/admin/messages/${id}/archive`, undefined, { auth: 'admin' }),
+    // Soft delete (moves to Trash)
     delete: (id: string) => api.del<{ message: string }>(`/admin/messages/${id}`, { auth: 'admin' }),
+    restore: (id: string) => api.patch<{ message: ApiMessage }>(`/admin/messages/${id}/restore`, undefined, { auth: 'admin' }),
+    // Permanent delete (only reachable from Trash)
+    destroy: (id: string) => api.del<{ message: string }>(`/admin/messages/${id}/permanent`, { auth: 'admin' }),
   },
 
   // Media
@@ -177,7 +198,7 @@ export const admin = {
       const qs = params ? '?' + new URLSearchParams(params).toString() : ''
       return api.get<{ assets: ApiMediaAsset[]; pagination: Pagination }>(`/admin/media${qs}`, { auth: 'admin' })
     },
-    usage: (id: string) => api.get<{ id: string; productName: string }[]>(`/admin/media/${id}/usage`, { auth: 'admin' }),
+    usage: (id: string) => api.get<{ usage: { productId: string; productName: string; productSku: string }[] }>(`/admin/media/${id}/usage`, { auth: 'admin' }),
     delete: (id: string) => api.del<{ message: string }>(`/admin/media/${id}`, { auth: 'admin' }),
     upload: (file: File) => {
       const formData = new FormData()

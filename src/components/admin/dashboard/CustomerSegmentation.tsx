@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Users, Filter } from 'lucide-react'
+import { orderCustomerEmail, orderCustomerName } from './orderFields'
 
 interface Props {
   orders: any[]
@@ -26,10 +27,10 @@ export function CustomerSegmentation({ orders }: Props) {
     const now = Date.now()
     const map = new Map<string, { name: string; spend: number; orderCount: number; lastOrder: string }>()
     for (const order of orders) {
-      const email = order.email || order.customerEmail || ''
+      const email = orderCustomerEmail(order)
       if (!email) continue
       if (!map.has(email)) {
-        map.set(email, { name: order.customerName || order.customer?.name || email.split('@')[0], spend: 0, orderCount: 0, lastOrder: order.createdAt })
+        map.set(email, { name: orderCustomerName(order), spend: 0, orderCount: 0, lastOrder: order.createdAt })
       }
       const c = map.get(email)!
       c.spend += order.total || 0

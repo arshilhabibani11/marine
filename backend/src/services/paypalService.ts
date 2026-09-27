@@ -95,8 +95,8 @@ export async function handleCaptureCompleted(resource: Record<string, unknown>) 
     // Pre-flight: never confirm an order whose items are no longer available.
     for (const item of order.items) {
       if (item.productId) {
-        const product = await prisma.product.findUnique({ where: { id: item.productId }, select: { stockCount: true, name: true } })
-        if (!product || product.stockCount < item.quantity) {
+        const product = await prisma.product.findUnique({ where: { id: item.productId }, select: { stockCount: true, availability: true, name: true } })
+        if (!product || product.availability === 'out-of-stock' || product.stockCount < item.quantity) {
           hookLog.error({ productId: item.productId, orderId: order.id }, 'Insufficient stock during PayPal webhook capture — order not confirmed')
           await prisma.orderTimeline.create({
             data: { orderId: order.id, status: order.status, note: 'Payment received but stock insufficient — order not confirmed. Manual review required.' },
@@ -263,8 +263,8 @@ export async function capturePaypalOrder(paypalOrderId: string, orderId: string,
   // Pre-flight: fail before charging the customer if any item is no longer available.
   for (const item of order.items) {
     if (item.productId) {
-      const product = await prisma.product.findUnique({ where: { id: item.productId }, select: { stockCount: true, name: true } })
-      if (!product || product.stockCount < item.quantity) {
+      const product = await prisma.product.findUnique({ where: { id: item.productId }, select: { stockCount: true, availability: true, name: true } })
+      if (!product || product.availability === 'out-of-stock' || product.stockCount < item.quantity) {
         throw Object.assign(new Error(`Insufficient stock for ${product?.name || 'product'}`), { status: 400 })
       }
     }

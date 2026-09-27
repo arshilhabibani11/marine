@@ -5,7 +5,7 @@ import { useToast } from '../../components/admin/toast-context'
 import { AdminPagination } from '../../components/admin/AdminPagination'
 import { CustomerDetailSlideover } from '../../components/admin/customers/CustomerDetailSlideover'
 import { CreateCustomerModal } from '../../components/admin/customers/CreateCustomerModal'
-import type { CustomerStatus, CustomerType } from '../../components/admin/customers/types'
+import type { CustomerOrder, CustomerStatus, CustomerType } from '../../components/admin/customers/types'
 import { statusConfig } from '../../components/admin/customers/types'
 import type { ApiCustomer } from '../../lib/api-types'
 
@@ -24,18 +24,20 @@ function mapApiCustomer(c: ApiCustomer): CustomerType {
     website: c.website || '',
     status: (c.status || 'active') as CustomerStatus,
     joinedDate: c.createdAt?.split('T')[0] || new Date().toISOString().split('T')[0],
-    lastOrderDate: c.lastOrderAt?.split('T')[0] || new Date().toISOString().split('T')[0],
+    lastOrderDate: c.lastOrderAt?.split('T')[0] || '',
     totalOrders: c._count?.orders ?? 0,
     totalSpent: c.totalSpent ?? 0,
     avgOrderValue: c._count?.orders ? Math.round((c.totalSpent ?? 0) / c._count.orders) : 0,
     orders: [],
     tags: c.tags || [],
-    notes: c.notes || '',
+    notes: c.internalNotes || c.notes || '',
   }
 }
 
 function formatDate(dateStr: string) {
+  if (!dateStr) return '—'
   const d = new Date(dateStr)
+  if (Number.isNaN(d.getTime())) return '—'
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
@@ -71,6 +73,29 @@ export default function AdminCustomers() {
 
   useEffect(() => { fetchCustomers() }, [fetchCustomers])
 
+  // The list endpoint omits order history, so load the detail (which includes
+  // recent orders) whenever a customer is opened in the slide-over.
+  const selectedId = selectedCustomer?.id ?? null
+  useEffect(() => {
+    if (!selectedId) return
+    let active = true
+    admin.customers.get(selectedId)
+      .then((res) => {
+        if (!active) return
+        const orders: CustomerOrder[] = (res.customer.orders ?? []).map((o) => ({
+          id: o.orderNumber || o.id,
+          date: o.createdAt,
+          total: Number(o.total ?? 0),
+          status: (o.status || 'pending') as CustomerOrder['status'],
+          itemCount: o._count?.items ?? 0,
+        }))
+        setCustomers((prev) => prev.map((c) => (c.id === selectedId ? { ...c, orders } : c)))
+        setSelectedCustomer((prev) => (prev && prev.id === selectedId ? { ...prev, orders } : prev))
+      })
+      .catch(() => { /* detail is optional; keep whatever the list gave us */ })
+    return () => { active = false }
+  }, [selectedId])
+
   const filteredCustomers = useMemo(() => {
     let result = [...customers]
     if (search.trim()) {
@@ -103,7 +128,7 @@ export default function AdminCustomers() {
 
   const stats = useMemo(() => ({
     totalRevenue: customers.reduce((s, c) => s + c.totalSpent, 0),
-    avgLifetimeValue: Math.round(customers.reduce((s, c) => s + c.totalSpent, 0) / customers.length),
+    avgLifetimeValue: customers.length ? Math.round(customers.reduce((s, c) => s + c.totalSpent, 0) / customers.length) : 0,
     vipCount: customers.filter((c) => c.status === 'vip').length,
     activeCount: customers.filter((c) => c.status === 'active' || c.status === 'vip').length,
   }), [customers])

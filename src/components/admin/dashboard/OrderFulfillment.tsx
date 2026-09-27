@@ -1,20 +1,25 @@
 import { useMemo } from 'react'
-import { Package, Truck, CheckCircle, Clock, XCircle } from 'lucide-react'
+import { Package, Truck, CheckCircle, Clock, XCircle, CreditCard } from 'lucide-react'
+import { isCancelledOrRefunded } from './orderStatus'
 
 interface Props {
   orders: any[]
 }
 
+// Mirrors the backend order status flow (orderMutations.STATUS_FLOW). Every
+// status must appear here or those orders vanish from the pipeline.
 const stages = [
   { key: 'pending', label: 'Pending', icon: Clock, color: 'text-[var(--accent-gold)]', bg: 'bg-[var(--accent-gold)]/10' },
   { key: 'confirmed', label: 'Confirmed', icon: Package, color: 'text-[var(--accent-blue)]', bg: 'bg-[var(--accent-blue)]/10' },
+  { key: 'paid', label: 'Paid', icon: CreditCard, color: 'text-[var(--accent-blue)]', bg: 'bg-[var(--accent-blue)]/10' },
   { key: 'processing', label: 'Processing', icon: Package, color: 'text-[var(--accent-teal)]', bg: 'bg-[var(--accent-teal)]/10' },
+  { key: 'packed', label: 'Packed', icon: Package, color: 'text-[var(--accent-teal)]', bg: 'bg-[var(--accent-teal)]/10' },
   { key: 'shipped', label: 'Shipped', icon: Truck, color: 'text-[var(--accent-gold)]', bg: 'bg-[var(--accent-gold)]/10' },
   { key: 'delivered', label: 'Delivered', icon: CheckCircle, color: 'text-[var(--success)]', bg: 'bg-[var(--success)]/10' },
 ]
 
 export function OrderFulfillment({ orders }: Props) {
-  const { counts, cancelled } = useMemo(() => {
+  const { counts, cancelled, active } = useMemo(() => {
     const counts: Record<string, number> = {}
     for (const s of stages) {
       counts[s.key] = 0
@@ -24,11 +29,11 @@ export function OrderFulfillment({ orders }: Props) {
       const status = order.status || ''
       if (counts[status] !== undefined) {
         counts[status]++
-      } else if (status === 'cancelled' || status === 'refunded') {
+      } else if (isCancelledOrRefunded(order)) {
         cancelled++
       }
     }
-    return { counts, cancelled }
+    return { counts, cancelled, active: orders.length - cancelled }
   }, [orders])
 
   return (
@@ -76,7 +81,7 @@ export function OrderFulfillment({ orders }: Props) {
           <span className="text-xs text-[var(--success)] font-medium">No cancelled orders</span>
         )}
         <span className="text-[0.625rem] text-[var(--text-muted)]">
-          {counts.pending + counts.confirmed + counts.processing + counts.shipped + counts.delivered} active
+          {active} active
         </span>
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { DollarSign, TrendingDown, XCircle } from 'lucide-react'
+import { isCancelledOrRefunded } from './orderStatus'
 
 interface Props {
   orders: any[]
@@ -7,8 +8,8 @@ interface Props {
 
 export function MoneyLeakDetector({ orders }: Props) {
   const analysis = useMemo(() => {
-    const validOrders = orders.filter(o => o.status !== 'cancelled' && o.status !== 'refunded')
-    const cancelledOrders = orders.filter(o => o.status === 'cancelled' || o.status === 'refunded')
+    const validOrders = orders.filter(o => !isCancelledOrRefunded(o))
+    const cancelledOrders = orders.filter(o => isCancelledOrRefunded(o))
 
     // Revenue leakage from cancellations
     const cancelledRevenue = cancelledOrders.reduce((s, o) => s + (o.total || 0), 0)

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Target, Plus, X, TrendingUp, Edit3, Check } from 'lucide-react'
+import { orderCustomerEmail } from './orderFields'
 
 interface Goal {
   id: string
@@ -47,7 +48,7 @@ export function GoalTracker({ orders, products }: Props) {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
 
     const monthOrders = orders.filter(o => o.createdAt >= monthStart && o.status !== 'cancelled')
-    const monthCustomers = new Set(monthOrders.map(o => o.email || o.customerEmail).filter(Boolean))
+    const monthCustomers = new Set(monthOrders.map(o => orderCustomerEmail(o)).filter(Boolean))
 
     return {
       revenue: monthOrders.reduce((s, o) => s + (o.total || 0), 0),

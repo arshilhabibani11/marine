@@ -12,16 +12,19 @@ export function ProductFormInventory({ form, updateField, getFieldClass, labelCl
     <div className="space-y-5">
       <h2 className="font-display text-lg font-bold text-[var(--text-primary)]">Inventory & Availability</h2>
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-1.5">
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
-            checked={form.inStock}
-            onChange={(e) => updateField('inStock', e.target.checked)}
+            checked={form.availability !== 'out-of-stock'}
+            onChange={(e) => updateField('availability', e.target.checked ? 'in-stock' : 'out-of-stock')}
             className="h-4 w-4 rounded border-[var(--border)] accent-[var(--success)]"
           />
           <span className="text-xs font-bold text-[var(--text-secondary)]">In Stock</span>
         </label>
+        <p className="text-[0.625rem] text-[var(--text-muted)]">
+          Unchecking marks the listing out of stock on the storefront (sets Availability to Out of Stock).
+        </p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

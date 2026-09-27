@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { Radio, ShoppingCart, FileText, Package, UserX, CheckCircle, AlertTriangle, Clock } from 'lucide-react'
+import { orderCustomerName } from './orderFields'
 
 interface Props {
   orders: any[]
@@ -36,8 +37,8 @@ export function RealTimeActivityStream({ orders, rfqs, alerts }: Props) {
       items.push({
         id: `order-${order.id}`,
         type: actionKey,
-        title: `Order ${order.id?.slice(0, 8) || 'new'}`,
-        detail: `${order.customerName || 'Customer'} · $${(order.total || 0).toLocaleString()}`,
+        title: `Order ${order.orderNumber || order.id?.slice(0, 8) || 'new'}`,
+        detail: `${orderCustomerName(order)} · $${(order.total || 0).toLocaleString()}`,
         time: new Date(order.createdAt).getTime(),
         ...cfg,
       })

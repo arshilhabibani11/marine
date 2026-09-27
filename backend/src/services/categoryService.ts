@@ -1,6 +1,7 @@
 import { prisma } from '../server.js'
 import { generateSlug } from '../utils/helpers.js'
 import { logAudit } from '../utils/audit.js'
+import { invalidateCachePath } from '../middleware/cacheGet.js'
 import type { AuthUser } from '../middleware/auth.js'
 
 // ─── Queries ──────────────────────────────────────────────────
@@ -61,6 +62,7 @@ export async function createCategory(data: Record<string, unknown>, actor: AuthU
   if (existing) throw Object.assign(new Error('Category with this name already exists'), { status: 400 })
 
   const category = await prisma.category.create({ data: { ...data, slug } as never })
+  invalidateCachePath('/storefront/categories')
   await logAudit({ actor, action: 'category.create', entityType: 'category', entityId: category.id, entityName: category.name, newValue: category, ipAddress })
   return { category }
 }
@@ -77,6 +79,7 @@ export async function updateCategory(id: string, data: Record<string, unknown>, 
   }
 
   const category = await prisma.category.update({ where: { id }, data: { ...data, slug } })
+  invalidateCachePath('/storefront/categories')
   await logAudit({ actor, action: 'category.update', entityType: 'category', entityId: category.id, entityName: category.name, previousValue: existing, newValue: category, ipAddress })
   return { category }
 }
@@ -91,12 +94,14 @@ export async function deleteCategory(id: string, actor: AuthUser, ipAddress = ''
   if (existing._count.children > 0) throw Object.assign(new Error('Cannot delete category with subcategories.'), { status: 400 })
 
   await prisma.category.delete({ where: { id } })
+  invalidateCachePath('/storefront/categories')
   await logAudit({ actor, action: 'category.delete', entityType: 'category', entityId: existing.id, entityName: existing.name, previousValue: existing, ipAddress })
   return { message: 'Category deleted' }
 }
 
 export async function reorderCategory(id: string, sortOrder: number, actor: AuthUser, ipAddress = '') {
   const category = await prisma.category.update({ where: { id }, data: { sortOrder } })
+  invalidateCachePath('/storefront/categories')
   await logAudit({ actor, action: 'category.reorder', entityType: 'category', entityId: category.id, entityName: category.name, newValue: { sortOrder }, ipAddress })
   return { category }
 }

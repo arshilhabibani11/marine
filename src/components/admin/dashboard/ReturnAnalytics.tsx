@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { RotateCcw, XCircle, TrendingDown } from 'lucide-react'
+import { isCancelledOrRefunded } from './orderStatus'
 
 interface Props {
   orders: any[]
@@ -7,7 +8,7 @@ interface Props {
 
 export function ReturnAnalytics({ orders }: Props) {
   const analysis = useMemo(() => {
-    const cancelled = orders.filter(o => o.status === 'cancelled' || o.status === 'refunded')
+    const cancelled = orders.filter(isCancelledOrRefunded)
     const total = orders.length
     const returnRate = total > 0 ? Math.round((cancelled.length / total) * 100) : 0
     const totalRefunded = cancelled.reduce((s, o) => s + (o.total || 0), 0)
@@ -38,7 +39,7 @@ export function ReturnAnalytics({ orders }: Props) {
       const month = order.createdAt?.slice(0, 7)
       if (month && monthlyReturns[month]) {
         monthlyReturns[month].total++
-        if (order.status === 'cancelled' || order.status === 'refunded') {
+        if (isCancelledOrRefunded(order)) {
           monthlyReturns[month].cancelled++
         }
       }

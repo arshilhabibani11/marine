@@ -1,9 +1,10 @@
-import { Router } from 'express'
+import { Router, Request, Response, NextFunction } from 'express'
 import multer from 'multer'
 import { authenticateAdmin, requireRole, AuthRequest } from '../../middleware/auth.js'
 import { asyncHandler } from '../../middleware/validate.js'
 import { sendSuccess, sendError } from '../../middleware/response.js'
 import * as brandLogoService from '../../services/brandLogoService.js'
+import logger from '../../utils/logger.js'
 
 const router = Router()
 router.use(authenticateAdmin)
@@ -23,8 +24,36 @@ const upload = multer({
   },
 })
 
+// ─── Multer Error Handler ──────────────────────────────────
+// Without this, multer errors (file too large, bad type) bubble to the global
+// error handler and surface as 500s instead of a clear 400.
+function handleMulterError(err: unknown, _req: Request, res: Response, next: NextFunction) {
+  if (!err) return next()
+
+  if (err instanceof multer.MulterError) {
+    logger.warn({ multerError: err.code, field: err.field }, '[brand-logo] Multer upload error')
+    switch (err.code) {
+      case 'LIMIT_FILE_SIZE':
+        return sendError(res, 'Logo too large. Maximum size is 5MB.', 400)
+      case 'LIMIT_UNEXPECTED_FILE':
+        return sendError(res, `Unexpected file field: ${err.field}`, 400)
+      default:
+        return sendError(res, `Upload error: ${err.message}`, 400)
+    }
+  }
+
+  const error = err as Error
+  logger.warn({ err: error }, '[brand-logo] Logo rejected')
+  return sendError(res, error.message || 'File rejected', 400)
+}
+
 // ─── Upload Brand Logo ─────────────────────────────────────
-router.post('/:id/logo', upload.single('file'), asyncHandler(async (req: AuthRequest, res) => {
+router.post('/:id/logo', (req: Request, res: Response, next: NextFunction) => {
+  upload.single('file')(req, res, (err: unknown) => {
+    if (err) return handleMulterError(err, req, res, next)
+    next()
+  })
+}, asyncHandler(async (req: AuthRequest, res) => {
   try {
     const result = await brandLogoService.uploadBrandLogo(
       req.params.id as string,

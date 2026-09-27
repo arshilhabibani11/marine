@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { Brain, TrendingUp, TrendingDown, AlertTriangle, CheckCircle, ShoppingCart, Package, Users, DollarSign } from 'lucide-react'
+import { isCancelledOrRefunded } from './orderStatus'
 
 interface Props {
   stats: any
@@ -25,7 +26,7 @@ export function BusinessIntelligenceCenter({ orders, rfqs, products, customers }
     const results: Insight[] = []
 
     // Revenue insights
-    const completedOrders = orders.filter((o: any) => !['cancelled', 'refunded'].includes(o.status))
+    const completedOrders = orders.filter((o: any) => !isCancelledOrRefunded(o))
     const totalRevenue = completedOrders.reduce((s: number, o: any) => s + (o.total || 0), 0)
     const recentOrders = completedOrders.filter((o: any) => now - new Date(o.createdAt).getTime() < 30 * DAY)
     const recentRevenue = recentOrders.reduce((s: number, o: any) => s + (o.total || 0), 0)
@@ -57,7 +58,7 @@ export function BusinessIntelligenceCenter({ orders, rfqs, products, customers }
     })
 
     // Inventory health
-    const lowStock = products.filter((p: any) => (p.stockCount || 0) <= (p.lowStockThreshold || 5) && (p.stockCount || 0) > 0).length
+    const lowStock = products.filter((p: any) => (p.stockCount || 0) <= (p.lowStockThreshold || 10) && (p.stockCount || 0) > 0).length
     const outOfStock = products.filter((p: any) => (p.stockCount || 0) === 0).length
     const stockHealthPct = products.length > 0 ? ((products.length - lowStock - outOfStock) / products.length) * 100 : 100
 

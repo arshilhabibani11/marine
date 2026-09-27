@@ -52,7 +52,7 @@ export function OrderTable({ loading, paginatedOrders, setSelectedOrder, page, t
                     className="cursor-pointer hover:bg-[var(--surface-soft)]"
                     onClick={() => setSelectedOrder(order)}
                   >
-                    <td className="font-mono text-xs font-bold text-[var(--accent-blue)]">{order.id}</td>
+                    <td className="font-mono text-xs font-bold text-[var(--accent-blue)]">{order.orderNumber}</td>
                     <td>
                       <div>
                         <p className="text-xs font-semibold text-[var(--text-primary)]">{order.company}</p>

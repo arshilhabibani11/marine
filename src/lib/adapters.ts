@@ -111,7 +111,7 @@ export function apiProductToFrontend(api: ApiProduct): Product {
     onSale: isOnSale,
     saleStartsAt: api.saleStartsAt || undefined,
     saleEndsAt: api.saleEndsAt || undefined,
-    inStock: api.stockCount > 0,
+    inStock: api.availability !== 'out-of-stock' && api.stockCount > 0,
     stockCount: api.stockCount,
     customLabel: api.customLabel || undefined,
     customLabelColor: api.customLabelColor || undefined,

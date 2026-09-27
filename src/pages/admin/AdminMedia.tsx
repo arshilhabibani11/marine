@@ -50,7 +50,7 @@ function mapApiAsset(a: ApiMediaAsset): MediaItem {
     filename: a.filename || '',
     originalName: a.originalName || a.filename || '',
     mimeType: a.mimeType || 'image/webp',
-    fileSize: a.size || 0,
+    fileSize: a.fileSize || a.size || 0,
     width: a.width || null,
     height: a.height || null,
     createdAt: a.createdAt || new Date().toISOString(),
@@ -144,10 +144,11 @@ export default function AdminMedia() {
   // Fetch usage for a specific media asset
   const fetchUsage = useCallback(async (assetId: string) => {
     try {
-      const usage = (await admin.media.usage(assetId) || []).map((u: any) => ({
-        productId: u.productId || u.product?.id || '',
-        productName: u.product?.name || 'Unknown Product',
-        productSku: u.product?.sku || '',
+      const res = await admin.media.usage(assetId)
+      const usage = (res.usage || []).map((u) => ({
+        productId: u.productId || '',
+        productName: u.productName || 'Unknown Product',
+        productSku: u.productSku || '',
       }))
       setUsageMap((prev) => new Map(prev).set(assetId, usage))
     } catch (err) {

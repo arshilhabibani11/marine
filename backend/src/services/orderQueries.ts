@@ -6,6 +6,8 @@ export interface OrderFilters {
   status?: string
   paymentStatus?: string
   search?: string
+  from?: string
+  to?: string
   page?: number
   limit?: number
 }
@@ -23,7 +25,16 @@ export async function listOrders(params: OrderFilters) {
       { orderNumber: { contains: params.search, mode: 'insensitive' } },
       { customer: { name: { contains: params.search, mode: 'insensitive' } } },
       { customer: { email: { contains: params.search, mode: 'insensitive' } } },
+      { customer: { company: { contains: params.search, mode: 'insensitive' } } },
+      { items: { some: { productSku: { contains: params.search, mode: 'insensitive' } } } },
     ]
+  }
+  // Date range (YYYY-MM-DD dates from the admin filters); `to` is inclusive of
+  // the whole day.
+  if (params.from || params.to) {
+    where.createdAt = {}
+    if (params.from) where.createdAt.gte = new Date(params.from)
+    if (params.to) where.createdAt.lte = new Date(`${params.to}T23:59:59.999Z`)
   }
 
   const [orders, total] = await Promise.all([

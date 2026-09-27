@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { UserX, AlertTriangle, CheckCircle } from 'lucide-react'
+import { orderCustomerEmail, orderCustomerName } from './orderFields'
 
 interface Props {
   orders: any[]
@@ -15,10 +16,10 @@ export function ChurnPredictor({ orders, customers }: Props) {
     const map = new Map<string, { name: string; totalSpend: number; orderCount: number; lastOrder: string }>()
 
     for (const order of orders) {
-      const email = order.email || order.customerEmail || ''
+      const email = orderCustomerEmail(order)
       if (!email) continue
       if (!map.has(email)) {
-        map.set(email, { name: order.customerName || order.customer?.name || email.split('@')[0], totalSpend: 0, orderCount: 0, lastOrder: order.createdAt })
+        map.set(email, { name: orderCustomerName(order), totalSpend: 0, orderCount: 0, lastOrder: order.createdAt })
       }
       const c = map.get(email)!
       c.totalSpend += order.total || 0

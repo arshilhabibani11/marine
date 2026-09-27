@@ -68,3 +68,22 @@ export function clearCache(key?: string) {
   if (key) responseCache.del(key)
   else responseCache.flushAll()
 }
+
+/**
+ * Invalidate every cached response for a storefront path. Keys are full
+ * original URLs, so this matches across the `/api` and `/api/v1` prefixes and
+ * ignores any query string — used when a mutation makes cached data stale
+ * (e.g. admin settings save → `/storefront/settings`).
+ */
+export function invalidateCachePath(path: string) {
+  const target = path.startsWith('/') ? path : `/${path}`
+  for (const key of responseCache.keys()) {
+    const normalized = key
+      .replace(/^\/api\/v1/, '/api')
+      .replace(/^\/api/, '')
+      .split('?')[0]
+    if (normalized === target || normalized.startsWith(`${target}/`)) {
+      responseCache.del(key)
+    }
+  }
+}

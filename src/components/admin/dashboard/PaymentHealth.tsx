@@ -5,16 +5,27 @@ interface Props {
   orders: any[]
 }
 
-const paymentMethods = [
-  { key: 'card', label: 'Card Payment', icon: CreditCard, color: 'text-[var(--accent-blue)]', bg: 'bg-[var(--accent-blue)]/10' },
-  { key: 'paypal', label: 'PayPal', icon: DollarSign, color: 'text-[var(--accent-gold)]', bg: 'bg-[var(--accent-gold)]/10' },
-  { key: 'bank_transfer', label: 'Bank Transfer', icon: CreditCard, color: 'text-[var(--accent-teal)]', bg: 'bg-[var(--accent-teal)]/10' },
-  { key: 'cod', label: 'Cash on Delivery', icon: DollarSign, color: 'text-[var(--text-muted)]', bg: 'bg-[var(--surface-soft)]' },
-]
+// order.paymentMethod is stored as 'paypal' | 'bank-transfer' (see
+// orderMutations.createOrder + the offers/RFQ conversions). Keys must match
+// exactly, otherwise the row never renders.
+const METHOD_META: Record<string, { label: string; icon: typeof CreditCard; color: string; bg: string }> = {
+  paypal: { label: 'PayPal', icon: DollarSign, color: 'text-[var(--accent-gold)]', bg: 'bg-[var(--accent-gold)]/10' },
+  'bank-transfer': { label: 'Bank Transfer', icon: CreditCard, color: 'text-[var(--accent-teal)]', bg: 'bg-[var(--accent-teal)]/10' },
+  card: { label: 'Card Payment', icon: CreditCard, color: 'text-[var(--accent-blue)]', bg: 'bg-[var(--accent-blue)]/10' },
+  cod: { label: 'Cash on Delivery', icon: DollarSign, color: 'text-[var(--text-muted)]', bg: 'bg-[var(--surface-soft)]' },
+}
+
+function methodLabel(key: string): string {
+  return METHOD_META[key]?.label || key.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
 
 export function PaymentHealth({ orders }: Props) {
   const data = useMemo(() => {
-    // Group by payment method
+    // paymentStatus is the authoritative payment field: 'pending' | 'paid' | 'refunded'.
+    // (order.status is fulfillment and never equals 'refunded'.)
+    const isFailed = (o: any) => o.paymentStatus === 'refunded' || o.status === 'cancelled'
+    const isPaid = (o: any) => o.paymentStatus === 'paid'
+
     const byMethod: Record<string, { total: number; paid: number; pending: number; failed: number; revenue: number }> = {}
 
     for (const order of orders) {
@@ -24,29 +35,26 @@ export function PaymentHealth({ orders }: Props) {
       }
       byMethod[method].total++
 
-      if (['confirmed', 'shipped', 'delivered'].includes(order.status)) {
+      if (isPaid(order)) {
         byMethod[method].paid++
         byMethod[method].revenue += order.total || 0
-      } else if (order.status === 'pending') {
-        byMethod[method].pending++
-      } else if (order.status === 'cancelled') {
+      } else if (isFailed(order)) {
         byMethod[method].failed++
       } else {
-        // Processing, etc — count as paid
-        byMethod[method].paid++
-        byMethod[method].revenue += order.total || 0
+        byMethod[method].pending++
       }
     }
 
-    // Overall stats
     const totalOrders = orders.length
-    const paidOrders = orders.filter(o => ['confirmed', 'shipped', 'delivered', 'processing'].includes(o.status)).length
-    const pendingOrders = orders.filter(o => o.status === 'pending').length
-    const failedOrders = orders.filter(o => o.status === 'cancelled').length
+    const paidOrders = orders.filter(isPaid).length
+    const pendingOrders = orders.filter((o) => !isPaid(o) && !isFailed(o)).length
+    const failedOrders = orders.filter(isFailed).length
     const successRate = totalOrders > 0 ? Math.round((paidOrders / totalOrders) * 100) : 0
 
     return { byMethod, totalOrders, paidOrders, pendingOrders, failedOrders, successRate }
   }, [orders])
+
+  const methodKeys = Object.keys(data.byMethod).filter((k) => (data.byMethod[k]?.total || 0) > 0)
 
   return (
     <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
@@ -89,25 +97,25 @@ export function PaymentHealth({ orders }: Props) {
         <div className="text-center rounded-xl bg-[var(--surface-soft)] p-2">
           <XCircle size={14} className="mx-auto text-[var(--danger)] mb-1" />
           <p className="font-mono text-sm font-bold text-[var(--text-primary)]">{data.failedOrders}</p>
-          <p className="text-[0.5rem] text-[var(--text-muted)]">Failed</p>
+          <p className="text-[0.5rem] text-[var(--text-muted)]">Failed/Refunded</p>
         </div>
       </div>
 
       {/* By payment method */}
       <div className="space-y-2">
-        {paymentMethods.map(pm => {
-          const method = data.byMethod[pm.key]
-          if (!method || method.total === 0) return null
-          const Icon = pm.icon
+        {methodKeys.map((key) => {
+          const method = data.byMethod[key]
+          const meta = METHOD_META[key]
+          const Icon = meta?.icon || CreditCard
           const successRate = method.total > 0 ? Math.round((method.paid / method.total) * 100) : 0
 
           return (
-            <div key={pm.key} className="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-[var(--surface-soft)] transition-colors">
-              <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${pm.bg} ${pm.color}`}>
+            <div key={key} className="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-[var(--surface-soft)] transition-colors">
+              <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${meta?.bg || 'bg-[var(--surface-soft)]'} ${meta?.color || 'text-[var(--text-muted)]'}`}>
                 <Icon size={14} />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-[var(--text-primary)]">{pm.label}</p>
+                <p className="text-xs font-semibold text-[var(--text-primary)]">{methodLabel(key)}</p>
                 <p className="text-[0.625rem] text-[var(--text-muted)]">
                   {method.total} orders · ${method.revenue.toLocaleString()}
                 </p>
@@ -127,7 +135,7 @@ export function PaymentHealth({ orders }: Props) {
       </div>
 
       {/* No payment methods */}
-      {Object.keys(data.byMethod).length === 0 && (
+      {methodKeys.length === 0 && (
         <div className="text-center py-6">
           <CreditCard size={24} className="mx-auto text-[var(--text-muted)] mb-2" />
           <p className="text-xs text-[var(--text-muted)] font-medium">No payment data yet</p>

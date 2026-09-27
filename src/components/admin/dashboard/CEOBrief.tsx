@@ -13,7 +13,9 @@ export function CEOBrief({ orders, rfqs, alerts }: Props) {
     const today = new Date().toISOString().split('T')[0]
     const todayOrders = orders.filter(o => o.createdAt?.startsWith(today) && o.status !== 'cancelled')
     const todayRevenue = todayOrders.reduce((sum, o) => sum + (o.total || 0), 0)
-    const pendingRfqs = rfqs.filter(r => r.status === 'new' || r.status === 'in-progress')
+    // Open RFQs — 'in-progress' is not a real backend status; anything not
+    // won/lost/closed is still being worked.
+    const pendingRfqs = rfqs.filter(r => r.status !== 'won' && r.status !== 'lost' && r.status !== 'closed')
     const emergencyRfqs = rfqs.filter(r => r.urgency === 'emergency' && r.status !== 'closed')
     const dangerAlerts = alerts.filter(a => a.type === 'danger')
 

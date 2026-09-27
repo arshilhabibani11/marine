@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Rocket, Shield, DollarSign, Package, Users, ShoppingCart, TrendingUp, Globe, Target, Zap, AlertTriangle } from 'lucide-react'
+import { isCancelledOrRefunded } from './orderStatus'
+import { orderCustomerEmail } from './orderFields'
 
 interface Props {
   stats: any
@@ -18,7 +20,7 @@ export function MissionControlDashboard({ orders, rfqs, products, customers, ale
   const data = useMemo(() => {
     const now = Date.now()
     const DAY = 86400000
-    const completed = orders.filter((o: any) => !['cancelled', 'refunded'].includes(o.status))
+    const completed = orders.filter((o: any) => !isCancelledOrRefunded(o))
     const cancelled = orders.filter((o: any) => o.status === 'cancelled')
 
     const totalRevenue = completed.reduce((s: number, o: any) => s + (o.total || 0), 0)
@@ -27,14 +29,14 @@ export function MissionControlDashboard({ orders, rfqs, products, customers, ale
     const aov = completed.length > 0 ? totalRevenue / completed.length : 0
     const cancelRate = orders.length > 0 ? (cancelled.length / orders.length) * 100 : 0
 
-    const lowStock = products.filter((p: any) => (p.stockCount || 0) <= (p.lowStockThreshold || 5) && (p.stockCount || 0) > 0).length
+    const lowStock = products.filter((p: any) => (p.stockCount || 0) <= (p.lowStockThreshold || 10) && (p.stockCount || 0) > 0).length
     const outOfStock = products.filter((p: any) => (p.stockCount || 0) === 0).length
     const stockValue = products.reduce((s: number, p: any) => s + (p.price || 0) * (p.stockCount || 0), 0)
 
     const pendingRfqs = rfqs.filter((r: any) => r.status === 'new').length
     const emergencyRfqs = rfqs.filter((r: any) => r.urgency === 'emergency' && r.status !== 'closed').length
 
-    const uniqueCustomers = new Set(orders.map((o: any) => o.email || o.customerEmail)).size
+    const uniqueCustomers = new Set(orders.map((o: any) => orderCustomerEmail(o)).filter(Boolean)).size
     const dangerAlerts = alerts.filter((a: any) => a.type === 'danger').length
 
     // Countries
