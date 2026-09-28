@@ -4,6 +4,7 @@
  * existing frontend Product interface.
  */
 import type { Product } from '../types'
+import { getProductImageUrl } from './utils'
 
 interface ApiProduct {
   id: string
@@ -68,30 +69,12 @@ export function apiProductToFrontend(api: ApiProduct): Product {
   const mainImage = api.images?.find((img) => img.isMain && img.url)?.url
   const primaryImageUrl = mainImage || api.images?.find((img) => img.url)?.url
 
-  let filename = primaryImageUrl
-  if (!filename) {
-    // Legacy products without an image relation still use the historical
-    // deterministic local/Cloudinary filename mapping.
-    // Fallback: extract deterministic number from last 3 hex digits of UUID -> range 1-100
-    const idDigits = api.id.replace(/[^a-f0-9]/gi, '').slice(-3)
-    const parsed = parseInt(idDigits, 16)
-    if (!isNaN(parsed)) {
-      const num = String((parsed % 100) + 1).padStart(3, '0')
-      filename = `products/product-${num}.jpg`
-      console.warn(`[Image Fallback] Product ${api.id} (${api.sku}): no image URL, mapped to ${filename}`)
-    } else {
-      // Last resort: try SKU digits
-      const skuMatch = api.sku.match(/(\d+)/)
-      if (skuMatch) {
-        const num = String((parseInt(skuMatch[1], 10) % 100) + 1).padStart(3, '0')
-        filename = `products/product-${num}.jpg`
-        console.warn(`[Image Fallback] Product ${api.id} (${api.sku}): no image URL, mapped from SKU to ${filename}`)
-      } else {
-        filename = 'products/placeholder.jpg'
-        console.warn(`[Image Fallback] Product ${api.id} (${api.sku}): no valid image URL or SKU digits, using placeholder`)
-      }
-    }
-  }
+  // Products with no image relation must NOT get a fabricated filename: the
+  // old UUID/SKU-derived mapping (product-###.jpg) pointed at a random
+  // unrelated demo photo. An empty filename resolves to the shared placeholder
+  // in getProductImageUrl() instead.
+  const filename = primaryImageUrl || ''
+  const placeholderUrl = getProductImageUrl()
 
   return {
     id: api.id,
@@ -121,7 +104,7 @@ export function apiProductToFrontend(api: ApiProduct): Product {
           alt: img.altText || `${api.name} - ${img.label || 'View'}`,
           label: img.label || undefined,
         }))
-      : [{ url: `/images/${filename}`, alt: api.name }],
+      : [{ url: placeholderUrl, alt: api.name }],
     isNewArrival: api.isNewArrival,
     makeOffer: api.makeOfferEnabled,
   }

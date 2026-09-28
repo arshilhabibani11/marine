@@ -31,12 +31,10 @@ const CLOUDINARY_BASE = `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/ima
  * Priority:
  *   1. Cloudinary CDN for product images (product-XXX[_category].jpg)
  *   2. Absolute URLs (http/https) → passed through
- *   3. /uploads/ paths → passed through (legacy; all new uploads go to Cloudinary)
- *   4. Local static files → /images/products/...
+ *   3. Local static files → /images/products/...
  *
- * Note: brand logos now upload to Cloudinary too (brandLogoService.ts), so
- * /uploads/ is only used by any remaining legacy records. No new uploads
- * write to local disk.
+ * Note: all uploads (products, brand logos) go to Cloudinary — there is no
+ * local /uploads/ pipeline anymore.
  */
 /**
  * Deterministic SKU base derived from a product name — slugifies to uppercase
@@ -66,7 +64,6 @@ export function generateProductSku(name: string): string {
 export function getProductImageUrl(pathOrFilename?: string): string {
   if (!pathOrFilename) return `${CLOUDINARY_BASE}/alka/static/placeholder`
   if (pathOrFilename.startsWith('http://') || pathOrFilename.startsWith('https://')) return pathOrFilename
-  if (pathOrFilename.startsWith('/uploads/')) return pathOrFilename
   
   const clean = pathOrFilename.startsWith('/') ? pathOrFilename.slice(1) : pathOrFilename
   const filename = clean.split('/').pop() || ''
@@ -81,7 +78,6 @@ export function getProductImageUrl(pathOrFilename?: string): string {
   if (clean.startsWith('images/products/')) return `/${clean}`
   if (clean.startsWith('products/')) return `/images/${clean}`
   if (clean.startsWith('images/')) return `/images/products/${clean.slice(7)}`
-  if (clean.startsWith('uploads/')) return `/${clean}`
   return `/images/products/${clean}`
 }
 

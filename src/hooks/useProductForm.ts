@@ -243,6 +243,18 @@ export function useProductForm() {
     isDirtyRef.current = true
   }, [formJson])
 
+  // The publish-time category error should clear itself as soon as a category
+  // is picked, without requiring another save attempt.
+  useEffect(() => {
+    if (form.category && errors.category) {
+      setErrors((prev) => {
+        const next = { ...prev }
+        delete next.category
+        return next
+      })
+    }
+  }, [form.category, errors.category])
+
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
       if (isDirtyRef.current) {
@@ -314,7 +326,7 @@ export function useProductForm() {
     )
   }, [form.industries, updateField])
 
-  const validate = useCallback((): Record<string, string> => {
+  const validate = useCallback((forStatus?: string): Record<string, string> => {
     const e: Record<string, string> = {}
     // Pricing rules only fire when the fields are actually filled in.
     // No required-field blocks — admins can save partial drafts.
@@ -327,8 +339,15 @@ export function useProductForm() {
     if (form.makeOfferEnabled && form.minimumOfferPrice && Number(form.minimumOfferPrice) <= 0) {
       e.minimumOfferPrice = 'Minimum offer price must be greater than 0'
     }
+    // Published products must belong to a category: storefront category
+    // browsing and filters count by categoryId, so an uncategorized product
+    // never appears under any category. Drafts/partials stay unrestricted.
+    const statusForValidation = forStatus || form.status
+    if (statusForValidation === 'published' && !form.category) {
+      e.category = 'Select a category before publishing — uncategorized products cannot be found via category browsing'
+    }
     return e
-  }, [form.salePrice, form.regularPrice, form.saleStartsAt, form.saleEndsAt, form.makeOfferEnabled, form.minimumOfferPrice])
+  }, [form.salePrice, form.regularPrice, form.saleStartsAt, form.saleEndsAt, form.makeOfferEnabled, form.minimumOfferPrice, form.category, form.status])
 
   const isValid = Object.keys(validate()).length === 0
 
@@ -390,7 +409,9 @@ export function useProductForm() {
   // `statusOverride` lets the sticky action bar publish/save-as-draft in one
   // click without waiting for the Visibility dropdown state to settle.
   const handleSave = useCallback(async (statusOverride?: string) => {
-    const validationErrors = validate()
+    // Validate against the status this save will actually store — the sticky
+    // bar can publish in one click without waiting for the Visibility dropdown.
+    const validationErrors = validate(statusOverride || form.status)
     setErrors(validationErrors)
     setAttempted(true)
     if (Object.keys(validationErrors).length > 0) {

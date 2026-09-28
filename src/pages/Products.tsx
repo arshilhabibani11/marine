@@ -3,14 +3,13 @@ import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Search } from 'lucide-react'
 import { useStore } from '../store/useStore'
-import { useProducts } from '../hooks/useProducts'
 import { useAddToCart } from '../hooks/useAddToCart'
 import { useProductList } from '../hooks/useApiQuery'
 import { apiProductsToFrontend } from '../lib/adapters'
-import { products as staticProducts } from '../data/products'
 import { ProductFilters } from '../components/product/ProductFilters'
 import { ProductGrid } from '../components/product/ProductGrid'
 import { ProductPagination } from '../components/product/ProductPagination'
+import { CatalogOfflineNotice } from '../components/ui/CatalogOfflineNotice'
 import { SEO } from '../components/seo/SEO'
 import { BreadcrumbJsonLd } from '../components/seo/BreadcrumbJsonLd'
 import type { Product } from '../types'
@@ -84,7 +83,7 @@ export default function Products() {
 
   // React Query caches each filter/page combination; keepPreviousData keeps the
   // previous results visible while the next set loads.
-  const { data: productListData, isLoading } = useProductList(queryParams)
+  const { data: productListData, isLoading, isError, refetch } = useProductList(queryParams)
   const apiOk = !!productListData
 
   const apiProducts: Product[] = useMemo(
@@ -94,20 +93,13 @@ export default function Products() {
   const serverTotal = productListData?.pagination?.total ?? 0
   const serverTotalPages = Math.max(1, productListData?.pagination?.totalPages ?? 1)
 
-  // Fallback path (API unreachable): filter + paginate the static catalog client-side.
-  // Skipped entirely when the API is up — the server path never reads these values.
-  const { products: staticFiltered, filteredCount: staticFilteredCount } = useProducts(apiOk ? [] : staticProducts)
-  const staticTotalPages = Math.max(1, Math.ceil(staticFilteredCount / PAGE_SIZE))
-  const staticPage = Math.min(currentPage, staticTotalPages)
-  const staticPageProducts = staticFiltered.slice((staticPage - 1) * PAGE_SIZE, staticPage * PAGE_SIZE)
-
-  // Unified view consumed by the render
-  const products = apiOk ? apiProducts : staticPageProducts
+  // No demo fallback: if the API fails, the outage notice above explains and
+  // the grid renders an explicit empty state — the bundled sample catalog is
+  // never passed off as real stock.
+  const products = apiOk ? apiProducts : []
   const initialLoading = isLoading && !productListData
-  // While the very first fetch is in flight, don't surface the static fallback
-  // count (255/17) — pass 0 so the mobile filter header doesn't flash it.
-  const finalCount = initialLoading ? 0 : (apiOk ? serverTotal : staticFilteredCount)
-  const totalPages = apiOk ? serverTotalPages : staticTotalPages
+  const finalCount = apiOk ? serverTotal : 0
+  const totalPages = serverTotalPages
   const safePage = Math.min(currentPage, totalPages)
 
   // If the requested page is beyond the last valid page (stale deep link, or a
@@ -264,43 +256,24 @@ export default function Products() {
   // Sidebar options come from the API's `filters` payload — full-catalog counts
   // and authoritative slugs (also fixes brand slugs that were previously derived
   // from display names, e.g. "Bosch Rexroth" → boschrexroth vs the real
-  // bosch-rexroth). The static fallback derives them from the catalog.
+  // bosch-rexroth). No static-catalog fallback: an empty sidebar is honest,
+  // fake category/brand counts are not.
   const apiFilters = productListData?.filters
 
-  // Price input bounds: use the API's filters.priceRange when available (it
-  // reflects the real catalog spread, e.g. $85–$12,000 — not the old hard-coded
-  // $1,000 cap); otherwise derive from the static catalog so the fallback path
-  // stays consistent.
-  const staticPriceBounds = useMemo(() => {
-    let min = Infinity
-    let max = 0
-    for (const p of staticProducts) {
-      const price = p.onSale && p.salePrice ? p.salePrice : p.price
-      if (price < min) min = price
-      if (price > max) max = price
-    }
-    return { min: Number.isFinite(min) ? min : 0, max: max || 1000 }
-  }, [])
-  const priceBounds = apiOk && apiFilters?.priceRange ? apiFilters.priceRange : staticPriceBounds
+  // Price input bounds: the API's filters.priceRange reflects the real catalog
+  // spread (e.g. $85–$12,000 — not the old hard-coded $1,000 cap). Until it
+  // arrives, fall back to the page's default range, not to demo-product prices.
+  const priceBounds = apiFilters?.priceRange ?? { min: 0, max: DEFAULT_PRICE_MAX }
 
-  const derivedCategories = useMemo(() => {
-    if (apiOk && apiFilters?.categories?.length) return apiFilters.categories
-    return staticProducts.reduce<{ id: string; name: string; count: number }[]>((acc, p) => {
-      const existing = acc.find((c) => c.id === p.category)
-      if (existing) existing.count++
-      else acc.push({ id: p.category, name: p.category.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()), count: 1 })
-      return acc
-    }, [])
-  }, [apiOk, apiFilters])
+  const derivedCategories = useMemo(
+    () => apiFilters?.categories ?? [],
+    [apiFilters],
+  )
 
-  const derivedBrands = useMemo(() => {
-    if (apiOk && apiFilters?.brands?.length) return apiFilters.brands.map((b) => ({ slug: b.id, name: b.name }))
-    return staticProducts.reduce<{ slug: string; name: string }[]>((acc, p) => {
-      const slug = p.brand.toLowerCase().replace(/\s+/g, '').replace(/\./g, '')
-      if (!acc.find((b) => b.slug === slug)) acc.push({ slug, name: p.brand })
-      return acc
-    }, [])
-  }, [apiOk, apiFilters])
+  const derivedBrands = useMemo(
+    () => (apiFilters?.brands ?? []).map((b) => ({ slug: b.id, name: b.name })),
+    [apiFilters],
+  )
 
   // Active filter chips
   const hasActiveFilters = searchQuery || selectedCategories.length > 0 || selectedBrands.length > 0 || showOnSale || urgencyFilter === 'emergency'
@@ -400,6 +373,15 @@ export default function Products() {
 
             {/* Main content */}
             <main>
+              {/* Outage must be visible: without this the page silently
+                  serves the bundled demo catalog instead of real stock. */}
+              {isError && (
+                <CatalogOfflineNotice
+                  className="mb-4"
+                  onRetry={() => { refetch() }}
+                  retrying={isLoading}
+                />
+              )}
               {/* Active filter chips */}
               {hasActiveFilters && (
                 <div className="flex flex-wrap gap-2 mb-4">
@@ -471,6 +453,16 @@ export default function Products() {
 
               {initialLoading ? (
                 <ProductGrid products={[]} addedIds={addedIds} onAddToCart={handleAddToCart} isLoading />
+              ) : isError && !productListData ? (
+                // Outage: the notice at the top explains why — never show demo
+                // products, and don't dress this up as "no results" either.
+                <div className="text-center py-20">
+                  <p className="text-sm font-semibold text-[var(--text-primary)]">{t('catalog.offlineTitle')}</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-2">{t('catalog.offlineBody')}</p>
+                  <button onClick={() => refetch()} className="mt-4 text-xs font-bold text-[var(--accent-primary)] hover:text-[var(--accent-gold)] bg-transparent border border-[var(--border)] px-4 py-2 rounded-lg cursor-pointer">
+                    {t('catalog.retry')}
+                  </button>
+                </div>
               ) : finalCount === 0 ? (
                 <div className="text-center py-20">
                   <p className="text-sm text-[var(--text-muted)]">{t('products.noResults')}</p>

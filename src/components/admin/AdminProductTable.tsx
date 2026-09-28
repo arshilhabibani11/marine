@@ -175,7 +175,8 @@ export function AdminProductTable({
                   </td>
                 </tr>
               ) : paginatedProducts.map((product) => {
-                const hasImage = product.images.length > 0 && product.images.some((img) => img.url && !img.url.includes('placeholder'))
+                const firstValidImage = product.images.find((img) => img.url && !img.url.includes('placeholder'))
+                const hasImage = Boolean(firstValidImage)
                 const effectivePrice = product.onSale && product.salePrice ? product.salePrice : product.price
                 return (
                   <tr key={product.id}>
@@ -188,17 +189,35 @@ export function AdminProductTable({
                     </td>
                     <td>
                       <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 shrink-0 rounded-lg bg-[var(--surface-soft)] border border-[var(--border)] overflow-hidden flex items-center justify-center">
+                        <div className="relative h-10 w-10 shrink-0 rounded-lg bg-[var(--surface-soft)] border border-[var(--border)] overflow-hidden flex items-center justify-center">
                           {hasImage ? (
-                            <OptimizedImage
-                              src={product.images[0].url}
-                              alt={product.name}
-                              width={40}
-                              height={40}
-                              loading="lazy"
-                              className="h-full w-full object-cover"
-                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                            />
+                            <>
+                              {/* Rendered behind the thumbnail and revealed only
+                                  when the image (plus its fallback chain) fails,
+                                  so a broken URL is flagged instead of looking
+                                  identical to "no image". */}
+                              <ImageOff size={14} className="absolute text-[var(--danger)]" style={{ display: 'none' }} data-broken-indicator />
+                              <OptimizedImage
+                                src={firstValidImage!.url}
+                                alt={firstValidImage!.alt || product.name}
+                                width={40}
+                                height={40}
+                                loading="lazy"
+                                className="relative h-full w-full object-cover"
+                                onLoad={(e) => {
+                                  const el = e.currentTarget
+                                  el.style.display = ''
+                                  const ind = el.parentElement?.querySelector('[data-broken-indicator]') as HTMLElement | null
+                                  if (ind) ind.style.display = 'none'
+                                }}
+                                onError={(e) => {
+                                  const el = e.currentTarget
+                                  el.style.display = 'none'
+                                  const ind = el.parentElement?.querySelector('[data-broken-indicator]') as HTMLElement | null
+                                  if (ind) ind.style.display = 'block'
+                                }}
+                              />
+                            </>
                           ) : (
                             <ImageOff size={14} className="text-[var(--text-muted)]" />
                           )}

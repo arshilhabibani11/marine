@@ -8,7 +8,6 @@ import { SEO } from '../components/seo/SEO'
 import { useStoreSettings } from '../hooks/useStoreSettings'
 import { useNewArrivals } from '../hooks/useApiQuery'
 import { apiProductsToFrontend } from '../lib/adapters'
-import { products as staticProducts } from '../data/products'
 import { Hero } from '../components/sections/Hero'
 import { ShopByCategory } from '../components/sections/ShopByCategory'
 const StatsBar = lazy(() => import('../components/sections/StatsBar').then(m => ({ default: m.StatsBar })))
@@ -19,6 +18,7 @@ const RFQSection = lazy(() => import('../components/sections/RFQSection').then(m
 const Testimonials = lazy(() => import('../components/sections/Testimonials').then(m => ({ default: m.Testimonials })))
 import { SectionLabel } from '../components/ui/SectionLabel'
 import { ProductCard } from '../components/ui/ProductCard'
+import { CatalogOfflineNotice } from '../components/ui/CatalogOfflineNotice'
 import { ProductCardSkeleton } from '../components/ui/Skeleton'
 
 const ecommerceCategories = [
@@ -49,16 +49,15 @@ export default function Home() {
   const { whatsappNumber } = useStoreSettings()
 
   // Fetch new arrivals from backend API; fall back to static data if backend is unavailable
-  const { data: newArrivalsData } = useNewArrivals()
+  const newArrivalsQuery = useNewArrivals()
+  const { data: newArrivalsData, isError: newArrivalsError } = newArrivalsQuery
 
   const apiNewArrivals = newArrivalsData?.products ? apiProductsToFrontend(newArrivalsData.products) : null
 
-  // Prefer API data when it arrives; show static products immediately so the
-  // grid is never empty while the API is slow or unavailable.
-  const staticNewArrivals = staticProducts.filter(p => p.isNewArrival).slice(0, 8)
-  const displayProducts = apiNewArrivals && apiNewArrivals.length > 0
-    ? apiNewArrivals.slice(0, 8)
-    : staticNewArrivals.length > 0 ? staticNewArrivals : staticProducts.slice(0, 8)
+  // API only: if the backend is unreachable the section renders empty with
+  // the outage notice above it — bundled demo products are never shown as
+  // if they were real stock.
+  const displayProducts = apiNewArrivals?.slice(0, 8) ?? []
 
   return (
     <>
@@ -224,8 +223,17 @@ export default function Home() {
               {t('shop.cta')} <ArrowRight size={16} />
             </Link>
           </div>
+          {newArrivalsError && (
+            <CatalogOfflineNotice
+              className="mb-6"
+              onRetry={() => { newArrivalsQuery.refetch() }}
+              retrying={newArrivalsQuery.isFetching}
+            />
+          )}
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {displayProducts.map((product) => (
+            {newArrivalsQuery.isLoading ? (
+              Array.from({ length: 4 }).map((_, i) => <ProductCardSkeleton key={`home-skel-${i}`} />)
+            ) : displayProducts.map((product) => (
               <ProductCard
                 key={product.id}
                 product={product}

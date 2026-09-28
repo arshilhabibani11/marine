@@ -201,6 +201,11 @@
     "catSpares": "Industrial Spare Parts",
     "catSurplus": "Surplus & Refurbished Equipment"
   },
+  "catalog": {
+    "offlineTitle": "Live catalog unavailable",
+    "offlineBody": "We couldn't reach the product catalog service, so this page may be showing saved or sample data instead of live stock.",
+    "retry": "Try again"
+  },
   "products": {
     "title": "Full Product Catalog",
     "catalog": "Product Catalog",

@@ -90,9 +90,12 @@ export function ProductFormImages({
                 type="text"
                 value={img.url}
                 onChange={(e) => updateImage(i, 'url', e.target.value)}
-                placeholder="/images/product-001_electrical.jpg"
+                placeholder="https://res.cloudinary.com/y7up4zti/image/upload/alka/products/product-001.jpg"
                 className={getFieldClass('')}
               />
+              <p className="mt-1 text-[0.625rem] text-[var(--text-muted)]">
+                Full image URL only (https://…). Local paths like /images/… are retired and render broken.
+              </p>
             </div>
             <div>
               <label className={labelClass}>Alt Text</label>

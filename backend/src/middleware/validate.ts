@@ -26,7 +26,17 @@ export function validateBody(schema: ZodSchema) {
 export function validateQuery(schema: ZodSchema) {
   return (req: Request, res: Response, next: NextFunction) => {
     try {
-      req.query = schema.parse(req.query)
+      // Express 5 defines `req.query` as a getter-only property, and this
+      // backend is ESM (strict mode), so a plain assignment throws
+      // `TypeError: Cannot set property query ... which has only a getter`.
+      // Define an own, writable property that shadows the prototype getter.
+      const parsedQuery = schema.parse(req.query)
+      Object.defineProperty(req, 'query', {
+        value: parsedQuery,
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      })
       next()
     } catch (error) {
       if (error instanceof ZodError) {

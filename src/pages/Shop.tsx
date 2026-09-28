@@ -5,9 +5,10 @@ import { ArrowRight, Truck, ShieldCheck, Clock, Package } from 'lucide-react'
 import { apiProductsToFrontend } from '../lib/adapters'
 import { useAddToCart } from '../hooks/useAddToCart'
 import { useNewArrivals, useFeaturedProducts, useCategories, useProductList } from '../hooks/useApiQuery'
-import { products as staticProducts } from '../data/products'
 import { SectionLabel } from '../components/ui/SectionLabel'
 import { ProductCard } from '../components/ui/ProductCard'
+import { CatalogOfflineNotice } from '../components/ui/CatalogOfflineNotice'
+import { ProductCardSkeleton } from '../components/ui/Skeleton'
 import { SEO } from '../components/seo/SEO'
 import { BreadcrumbJsonLd } from '../components/seo/BreadcrumbJsonLd'
 import type { Product } from '../types'
@@ -24,55 +25,52 @@ export default function Shop() {
   const { handleAddToCart, addedIds } = useAddToCart()
 
   // React Query provides caching, deduplication, and background refetching
-  const { data: newArrivalsData } = useNewArrivals()
-  const { data: featuredData } = useFeaturedProducts()
-  const { data: latestData } = useProductList({ limit: '8', sort: 'newest' })
-  const { data: categoriesData } = useCategories()
+  const newArrivalsQuery = useNewArrivals()
+  const featuredQuery = useFeaturedProducts()
+  const latestQuery = useProductList({ limit: '8', sort: 'newest' })
+  const categoriesQuery = useCategories()
 
-  const newArrivals: Product[] = useMemo(() => {
-    if (newArrivalsData?.products?.length) {
-      return apiProductsToFrontend(newArrivalsData.products).slice(0, 8)
-    }
-    const staticArrivals = staticProducts.filter(p => p.isNewArrival).slice(0, 8)
-    return staticArrivals.length > 0 ? staticArrivals : staticProducts.slice(0, 8)
-  }, [newArrivalsData])
+  const { data: newArrivalsData } = newArrivalsQuery
+  const { data: featuredData } = featuredQuery
+  const { data: latestData } = latestQuery
+  const { data: categoriesData } = categoriesQuery
 
-  const featuredProducts: Product[] = useMemo(() => {
-    if (featuredData?.products?.length) {
-      return apiProductsToFrontend(featuredData.products).slice(0, 8)
-    }
-    return staticProducts.slice(0, 8)
-  }, [featuredData])
+  // Any failed catalog query means the grids below are showing the bundled
+  // demo catalog (or empty sections) — surface that instead of failing silently.
+  const catalogError = newArrivalsQuery.isError || featuredQuery.isError || latestQuery.isError || categoriesQuery.isError
+  const retryCatalog = () => {
+    if (newArrivalsQuery.isError) newArrivalsQuery.refetch()
+    if (featuredQuery.isError) featuredQuery.refetch()
+    if (latestQuery.isError) latestQuery.refetch()
+    if (categoriesQuery.isError) categoriesQuery.refetch()
+  }
+
+  const newArrivals: Product[] = useMemo(
+    () => (newArrivalsData?.products?.length ? apiProductsToFrontend(newArrivalsData.products).slice(0, 8) : []),
+    [newArrivalsData],
+  )
+
+  const featuredProducts: Product[] = useMemo(
+    () => (featuredData?.products?.length ? apiProductsToFrontend(featuredData.products).slice(0, 8) : []),
+    [featuredData],
+  )
 
   // Latest published catalog items — guarantees every published product can
   // surface on the shop page even when it is neither featured nor flagged as
-  // a new arrival.
-  const latestProducts: Product[] = useMemo(() => {
-    if (latestData?.products?.length) {
-      return apiProductsToFrontend(latestData.products).slice(0, 8)
-    }
-    return staticProducts.slice(0, 8)
-  }, [latestData])
+  // a new arrival. Empty on API failure: the notice above explains, and
+  // bundled sample products are never shown as if they were real stock.
+  const latestProducts: Product[] = useMemo(
+    () => (latestData?.products?.length ? apiProductsToFrontend(latestData.products).slice(0, 8) : []),
+    [latestData],
+  )
 
   const categories: CategoryWithCount[] = useMemo(() => {
-    if (categoriesData?.categories?.length) {
-      return categoriesData.categories.map((c: any) => ({
-        id: c.slug || c.id,
-        name: c.name,
-        icon: c.icon || 'Package',
-        count: c._count?.products ?? c.productCount ?? 0,
-      }))
-    }
-    // Fallback: derive categories from static products
-    const catMap = new Map<string, number>()
-    staticProducts.forEach(p => {
-      catMap.set(p.category, (catMap.get(p.category) || 0) + 1)
-    })
-    return Array.from(catMap.entries()).map(([id, count]) => ({
-      id,
-      name: id.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-      icon: 'Package',
-      count,
+    if (!categoriesData?.categories?.length) return []
+    return categoriesData.categories.map((c: any) => ({
+      id: c.slug || c.id,
+      name: c.name,
+      icon: c.icon || 'Package',
+      count: c._count?.products ?? c.productCount ?? 0,
     }))
   }, [categoriesData])
 
@@ -86,6 +84,11 @@ export default function Shop() {
         canonical="/shop"
       />
       <BreadcrumbJsonLd items={[{ name: 'Home', url: '/' }, { name: 'Shop', url: '/shop' }]} />
+      {catalogError && (
+        <div className="max-w-[1280px] mx-auto px-4 sm:px-6 pt-6">
+          <CatalogOfflineNotice onRetry={retryCatalog} retrying={newArrivalsQuery.isFetching || featuredQuery.isFetching || latestQuery.isFetching || categoriesQuery.isFetching} />
+        </div>
+      )}
       {/* ── SHOP HERO ── */}
       <section className="relative overflow-hidden bg-[var(--navy-deep)] py-16 border-b border-white/10">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_0%,var(--gold-muted),transparent_28rem),radial-gradient(circle_at_85%_20%,var(--teal-soft),transparent_30rem)]" />
@@ -178,7 +181,9 @@ export default function Shop() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {newArrivals.map((product) => (
+            {newArrivalsQuery.isLoading ? (
+              Array.from({ length: 4 }).map((_, i) => <ProductCardSkeleton key={`na-skel-${i}`} />)
+            ) : newArrivals.map((product) => (
               <ProductCard
                 key={product.id}
                 product={product}
@@ -209,7 +214,9 @@ export default function Shop() {
             </Link>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {featuredProducts.map((product) => (
+            {featuredQuery.isLoading ? (
+              Array.from({ length: 4 }).map((_, i) => <ProductCardSkeleton key={`feat-skel-${i}`} />)
+            ) : featuredProducts.map((product) => (
                 <ProductCard
                   key={product.id}
                   product={product}
@@ -240,7 +247,9 @@ export default function Shop() {
             </Link>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {latestProducts.map((product) => (
+            {latestQuery.isLoading ? (
+              Array.from({ length: 4 }).map((_, i) => <ProductCardSkeleton key={`latest-skel-${i}`} />)
+            ) : latestProducts.map((product) => (
               <ProductCard
                 key={product.id}
                 product={product}

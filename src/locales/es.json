@@ -198,6 +198,11 @@
     "catSpares": "Repuestos Industriales",
     "catSurplus": "Equipos Excedentes y Reacondicionados"
   },
+  "catalog": {
+    "offlineTitle": "Catálogo no disponible",
+    "offlineBody": "No se pudo conectar con el catálogo de productos; es posible que esta página muestre datos guardados o de ejemplo en lugar del stock real.",
+    "retry": "Reintentar"
+  },
   "products": {
     "title": "Catálogo Completo de Productos",
     "catalog": "Catálogo de Productos",
