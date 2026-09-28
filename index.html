@@ -129,7 +129,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preconnect" href="https://api.alkatraders.co" />
-    <link rel="preload" as="image" href="https://res.cloudinary.com/y7up4zti/image/upload/v1/alka/static/alka-traders-logo" />
+    <!-- NOTE: the navbar logo is intentionally NOT preloaded. Preloading a
+         1024×1024 image gave it the same priority as the page's actual
+         content images, so hero/product photos waited behind it on every
+         page. It is fetched normally by the navbar <img>. -->
     <!-- NOTE: the generic placeholder (used only as an on-demand fallback for
          products with no image) is intentionally NOT preloaded — it wasted a
          request and triggered "preloaded but not used" warnings on every page. -->

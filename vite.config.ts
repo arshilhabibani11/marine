@@ -18,7 +18,12 @@ export default defineConfig(({ mode }) => {
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'images/*.png', 'images/*.avif'],
+      // Only the favicon is precached. The old `images/*.png|avif` globs pulled
+      // ~9 MB of images into the install step, so Workbox downloaded them in the
+      // background on every first visit / after every deploy — saturating the
+      // connection and starving the visible page images (they loaded seconds
+      // late). Runtime image caching still happens via the Cloudinary route.
+      includeAssets: ['favicon.ico'],
       manifest: {
         name: 'Alka Traders — Marine Equipment Supplier',
         short_name: 'Alka Traders',
@@ -41,7 +46,10 @@ export default defineConfig(({ mode }) => {
         // chunks — producing "Failed to fetch dynamically imported module"
         // white screens on refresh, worst on lazy routes (admin, network,
         // checkout). Only immutable, hashed assets belong in the precache.
-        globPatterns: ['**/*.{js,css,png,avif,woff2,svg,ico,webmanifest}'],
+        // Hashed JS/CSS/fonts only — never png/avif. See includeAssets note:
+        // precaching dist/images (9.2 MB, 323 files → ~22 MB) made the service
+        // worker install compete with page loading for bandwidth.
+        globPatterns: ['**/*.{js,css,woff2,svg,ico,webmanifest}'],
         cleanupOutdatedCaches: true,
         // vite-plugin-pwa defaults navigateFallback to 'index.html' — that
         // regenerates the stale-shell NavigationRoute we just removed. Null it
@@ -98,10 +106,14 @@ export default defineConfig(({ mode }) => {
     rollupOptions: {
       output: {
         manualChunks(id) {
-          // Separate admin panel into its own chunk (only loads on /admin)
-          if (id.includes('/pages/admin/') || id.includes('/components/admin/')) {
-            return 'admin'
-          }
+          // NOTE: admin + three are deliberately NOT forced into manual chunks
+          // any more. Forcing every file under components/admin/** into one
+          // `admin` chunk (and three into `three`) created static edges from the
+          // entry/vendor chunks into those chunks, so Vite emitted
+          // `<link rel="modulepreload">` for ~420 KB gz of admin panel + 3D
+          // globe code on EVERY public page. Lazy routes already code-split
+          // naturally, so /admin and /network still download only what they use.
+
           // Vendor chunk for heavy libraries
           if (id.includes('node_modules/react-dom') || id.includes('node_modules/react-router')) {
             return 'vendor'
@@ -118,11 +130,6 @@ export default defineConfig(({ mode }) => {
           }
           // NOTE: i18next stays in the entry chunk on purpose — main.tsx
           // initializes it synchronously at boot, so it's on the critical path.
-
-          // Three.js scene (only loaded on /network)
-          if (id.includes('node_modules/three/') || id.includes('node_modules/@react-three/')) {
-            return 'three'
-          }
         },
       },
     },

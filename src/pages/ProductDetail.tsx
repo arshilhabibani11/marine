@@ -161,7 +161,7 @@ export default function ProductDetail() {
         title={productSeoTitle}
         description={productSeoDescription.slice(0, 158)}
         canonical={`/product/${id}`}
-        ogImage={product ? getProductImageUrl(product.filename) : undefined}
+        ogImage={product ? getProductImageUrl(product.filename, 0) : undefined}
         ogType="product"
         productPrice={effectivePrice}
         productCurrency="USD"

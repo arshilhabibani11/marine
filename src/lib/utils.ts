@@ -61,9 +61,30 @@ export function generateProductSku(name: string): string {
   return `${base}-${suffix}`
 }
 
-export function getProductImageUrl(pathOrFilename?: string): string {
-  if (!pathOrFilename) return `${CLOUDINARY_BASE}/alka/static/placeholder`
-  if (pathOrFilename.startsWith('http://') || pathOrFilename.startsWith('https://')) return pathOrFilename
+/**
+ * Append Cloudinary delivery transformations to a res.cloudinary.com URL so
+ * the browser downloads a right-sized, auto-format image instead of the
+ * original upload (product photos are 2000×2000 ≈ 247 KB; at w_800 + f_auto
+ * + q_auto they drop to ~30–60 KB and decode much faster — this was a big
+ * part of "images load late").
+ *
+ * - `c_limit` never upscales images smaller than the requested width.
+ * - URLs that already carry a width transform are returned untouched.
+ * - `width <= 0` disables the transform (e.g. og:image for social crawlers).
+ */
+function withCloudinaryTransform(url: string, width?: number): string {
+  if (!width || width <= 0) return url
+  if (!url.includes('res.cloudinary.com') || !url.includes('/image/upload/')) return url
+  const firstSegment = (url.split('/image/upload/')[1] || '').split('/')[0] || ''
+  if (firstSegment.includes('w_') || firstSegment.includes('f_auto')) return url
+  return url.replace('/image/upload/', `/image/upload/f_auto,q_auto,w_${width},c_limit/`)
+}
+
+export function getProductImageUrl(pathOrFilename?: string, width = 800): string {
+  if (!pathOrFilename) return withCloudinaryTransform(`${CLOUDINARY_BASE}/alka/static/placeholder`, width)
+  if (pathOrFilename.startsWith('http://') || pathOrFilename.startsWith('https://')) {
+    return withCloudinaryTransform(pathOrFilename, width)
+  }
   
   const clean = pathOrFilename.startsWith('/') ? pathOrFilename.slice(1) : pathOrFilename
   const filename = clean.split('/').pop() || ''
@@ -71,7 +92,7 @@ export function getProductImageUrl(pathOrFilename?: string): string {
   // If this is a product image pattern, serve from Cloudinary CDN
   if (/^product-\d{3}(_[a-z0-9-]+)?\.jpg$/.test(filename)) {
     const name = filename.replace(/\.jpg$/, '')
-    return `${CLOUDINARY_BASE}/alka/products/${name}`
+    return withCloudinaryTransform(`${CLOUDINARY_BASE}/alka/products/${name}`, width)
   }
   
   // Fallback: local static files

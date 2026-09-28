@@ -129,11 +129,12 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
           onTouchEnd={handleDoubleTap}
         >
           <OptimizedImage
-            src={getProductImageUrl(product.filename)}
+            src={getProductImageUrl(product.filename, 1200)}
             alt={product.name}
             width={600}
             height={600}
             loading="eager"
+            fetchPriority="high"
             sizes="(max-width: 768px) 100vw, 55vw"
             className={`w-full h-full object-contain p-2 transition-transform duration-200 ${
               showZoom ? 'scale-150' : touchScale > 1 ? '' : 'scale-100'

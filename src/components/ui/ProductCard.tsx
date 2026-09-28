@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react'
+import { memo, useEffect, useMemo, useRef } from 'react'
 import { Check, Clock, PackageCheck, ShoppingCart, Sparkles } from 'lucide-react'
 import { WhatsAppIcon } from './WhatsAppIcon'
 import { Link } from 'react-router-dom'
@@ -47,6 +47,31 @@ export const ProductCard = memo(function ProductCard({ product, added = false, o
   // detail page instantly (no loading screen) — fires once per card.
   const detailQueryKey = useMemo(() => ['products', 'detail', product.id], [product.id])
   const prefetchDetail = usePrefetchOnHover(detailQueryKey, () => storefront.products.get(product.id))
+
+  // Touch devices never hover, so tapping a card always paid the full
+  // HTML → JS → API waterfall. Warm the same cache when the card scrolls
+  // into view instead — but only if it STAYS visible (600 ms dwell), so
+  // fast scrolling doesn't fire a request per card.
+  const cardRef = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    const el = cardRef.current
+    if (!el || typeof IntersectionObserver === 'undefined') return
+    let dwell: ReturnType<typeof setTimeout> | null = null
+    const io = new IntersectionObserver((entries) => {
+      const visible = entries.some((e) => e.isIntersecting)
+      if (visible && !dwell) {
+        dwell = setTimeout(() => { prefetchDetail(); io.disconnect() }, 600)
+      } else if (!visible && dwell) {
+        clearTimeout(dwell)
+        dwell = null
+      }
+    }, { rootMargin: '200px 0px' })
+    io.observe(el)
+    return () => {
+      if (dwell) clearTimeout(dwell)
+      io.disconnect()
+    }
+  }, [prefetchDetail])
   const imageClassName = 'w-full ' + (compact ? 'aspect-[4/3]' : 'aspect-square') + ' object-cover transition duration-700 group-hover:scale-[1.06]'
   const stockClassName = 'rounded-full px-2.5 py-1 text-[11px] font-black ' + (product.inStock ? 'bg-success text-[var(--btn-success-text)]' : 'bg-[var(--navy-deep)] text-white')
   const buttonClassName = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-4 py-3 text-xs font-black uppercase tracking-[0.08em] transition ' + (
@@ -58,7 +83,7 @@ export const ProductCard = memo(function ProductCard({ product, added = false, o
   )
 
   return (
-    <article className="group card relative flex h-full flex-col overflow-hidden" onMouseEnter={prefetchDetail}>
+    <article ref={cardRef} className="group card relative flex h-full flex-col overflow-hidden" onMouseEnter={prefetchDetail}>
       <Link to={'/product/' + product.id} className="relative block overflow-hidden bg-[var(--surface-raised)] no-underline">
         <OptimizedImage
           src={getProductImageUrl(product.filename)}
