@@ -72,7 +72,7 @@ export function generateProductSku(name: string): string {
  * - URLs that already carry a width transform are returned untouched.
  * - `width <= 0` disables the transform (e.g. og:image for social crawlers).
  */
-function withCloudinaryTransform(url: string, width?: number): string {
+export function applyCloudinaryTransform(url: string, width?: number): string {
   if (!width || width <= 0) return url
   if (!url.includes('res.cloudinary.com') || !url.includes('/image/upload/')) return url
   const firstSegment = (url.split('/image/upload/')[1] || '').split('/')[0] || ''
@@ -81,9 +81,9 @@ function withCloudinaryTransform(url: string, width?: number): string {
 }
 
 export function getProductImageUrl(pathOrFilename?: string, width = 800): string {
-  if (!pathOrFilename) return withCloudinaryTransform(`${CLOUDINARY_BASE}/alka/static/placeholder`, width)
+  if (!pathOrFilename) return applyCloudinaryTransform(`${CLOUDINARY_BASE}/alka/static/placeholder`, width)
   if (pathOrFilename.startsWith('http://') || pathOrFilename.startsWith('https://')) {
-    return withCloudinaryTransform(pathOrFilename, width)
+    return applyCloudinaryTransform(pathOrFilename, width)
   }
   
   const clean = pathOrFilename.startsWith('/') ? pathOrFilename.slice(1) : pathOrFilename
@@ -92,7 +92,7 @@ export function getProductImageUrl(pathOrFilename?: string, width = 800): string
   // If this is a product image pattern, serve from Cloudinary CDN
   if (/^product-\d{3}(_[a-z0-9-]+)?\.jpg$/.test(filename)) {
     const name = filename.replace(/\.jpg$/, '')
-    return withCloudinaryTransform(`${CLOUDINARY_BASE}/alka/products/${name}`, width)
+    return applyCloudinaryTransform(`${CLOUDINARY_BASE}/alka/products/${name}`, width)
   }
   
   // Fallback: local static files

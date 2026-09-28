@@ -129,6 +129,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preconnect" href="https://api.alkatraders.co" />
+    <!-- Fire the product-detail API call now (only does anything on
+         /product/<id> deep links) so it overlaps the JS download instead of
+         starting after hydration — see public/early-product.js. async so it
+         never blocks parsing. -->
+    <script async src="/early-product.js"></script>
     <!-- NOTE: the navbar logo is intentionally NOT preloaded. Preloading a
          1024×1024 image gave it the same priority as the page's actual
          content images, so hero/product photos waited behind it on every

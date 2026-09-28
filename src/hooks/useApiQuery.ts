@@ -70,13 +70,27 @@ export function useProductDetail(id?: string) {
     queryKey: queryKeys.products.detail(id),
     queryFn: async () => {
       if (!id) return { product: null as Product | null, related: [] as Product[] }
+
+      const toResult = (res: { product?: ApiProduct | null; related?: ApiProduct[] | null }) => ({
+        product: res.product ? apiProductToFrontend(res.product) : null,
+        related: (res.related || []).map(apiProductToFrontend).slice(0, 4),
+      })
+
+      // public/early-product.js starts this exact request while the JS bundle
+      // is still downloading — roughly 1.5s before React hydrates. Reuse it
+      // (one-shot) instead of paying a second API round trip after mount.
+      const early = (window as unknown as {
+        __EARLY_PRODUCT__?: { id: string; data: { product?: ApiProduct | null; related?: ApiProduct[] | null } }
+      }).__EARLY_PRODUCT__
+      if (early && early.id === id) {
+        ;(window as unknown as { __EARLY_PRODUCT__?: unknown }).__EARLY_PRODUCT__ = undefined
+        if (early.data.product) return toResult(early.data)
+      }
+
       try {
         const res = await storefront.products.get(id)
         if (res.product) {
-          return {
-            product: apiProductToFrontend(res.product),
-            related: (res.related || []).map(apiProductToFrontend).slice(0, 4),
-          }
+          return toResult(res)
         }
       } catch {
         console.warn('[ProductDetail] API fetch failed — falling back to static product data')
