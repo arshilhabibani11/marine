@@ -8,7 +8,7 @@
 import { api } from './core'
 import type {
   ApiProduct, ApiBrand, ApiCategory, ApiIndustry,
-  ApiOrder, ApiStoreSettings,
+  ApiOrder, ApiStoreSettings, ApiOffer,
   ApiSearchResult, Pagination, ProductListResponse,
 } from '../api-types'
 
@@ -91,6 +91,21 @@ export const storefront = {
       productId: string; customerEmail: string; offeredPrice: number
       quantity?: number; message?: string
     }) => api.post<{ message: string; offerNumber: string; id: string }>('/storefront/offers', data),
+
+    // Current customer's offers (Make an Offer → account page)
+    mine: () =>
+      api.get<{ offers: ApiOffer[] }>('/storefront/offers/mine', { auth: 'customer' }),
+
+    // Create the server-priced payment order for an accepted offer. The client
+    // sends only the offer id + shipping address — never amounts.
+    pay: (id: string, shipping: {
+      fullName: string; addressLine1: string; addressLine2?: string
+      city: string; state?: string; postalCode?: string; country: string
+    }) => api.post<{ order: ApiOrder }>(`/storefront/offers/${id}/pay`, { shipping }, { auth: 'customer' }),
+
+    // Accept an admin counter offer (counter becomes the payable price).
+    acceptCounter: (id: string) =>
+      api.post<{ message: string }>(`/storefront/offers/${id}/accept-counter`, undefined, { auth: 'customer' }),
   },
 
   // Contact

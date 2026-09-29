@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { X, Check } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { storefront } from '../../lib/api'
+import { useStore } from '../../store/useStore'
 import type { Product } from '../../types'
 
 interface OfferModalProps {
@@ -11,8 +12,9 @@ interface OfferModalProps {
 
 export function OfferModal({ product, onClose }: OfferModalProps) {
   const { t } = useTranslation()
+  const user = useStore((s) => s.user)
   const [price, setPrice] = useState('')
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(user?.email || '')
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -21,7 +23,10 @@ export function OfferModal({ product, onClose }: OfferModalProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!price || !email) return
+    // Signed-in customers bind the offer to their account (payable from My
+    // Offers); guests keep the email-lead flow. The amount is input only —
+    // the server re-validates eligibility and every authoritative value.
+    if (!price || (!user && !email)) return
     setSubmitting(true)
     setError('')
     try {
@@ -83,19 +88,21 @@ export function OfferModal({ product, onClose }: OfferModalProps) {
                 className="w-full px-4 py-3 bg-[var(--primary-bg)] border border-[var(--border)] text-sm text-[var(--text-primary)] rounded-lg outline-none focus:border-[var(--accent-primary)]"
               />
             </div>
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">
-                {t('product.email')}
-              </label>
-              <input
-                type="email"
-                required
-                placeholder={t('product.emailPlaceholder')}
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 bg-[var(--primary-bg)] border border-[var(--border)] text-sm text-[var(--text-primary)] rounded-lg outline-none focus:border-[var(--accent-primary)]"
-              />
-            </div>
+            {!user && (
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">
+                  {t('product.email')}
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder={t('product.emailPlaceholder')}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full px-4 py-3 bg-[var(--primary-bg)] border border-[var(--border)] text-sm text-[var(--text-primary)] rounded-lg outline-none focus:border-[var(--accent-primary)]"
+                />
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4 mt-6">
               <button
                 type="button"

@@ -25,11 +25,13 @@ import { ConfirmDialog } from '../../components/admin/ConfirmDialog'
 import { AdminPagination } from '../../components/admin/AdminPagination'
 import type { ApiOffer } from '../../lib/api-types'
 
-// Mirrors backend Offer.status values (offerAdminService.ts + rfqService.ts):
-// pending → accept/reject/counter → accepted → convert-to-order.
-type OfferStatus = 'pending' | 'accepted' | 'rejected' | 'countered' | 'converted-to-order'
+// Mirrors backend Offer.status values (offerAdminService.ts + rfqService.ts + offerService.ts):
+// pending → accept/reject/counter → accepted → awaiting-payment → paid
+// (PayPal offer flow) or accepted → converted-to-order (bank-transfer flow).
+// accepted/awaiting-payment can lapse to 'expired' when the payment window passes.
+type OfferStatus = 'pending' | 'accepted' | 'rejected' | 'countered' | 'converted-to-order' | 'awaiting-payment' | 'paid' | 'expired'
 
-const OFFER_STATUSES: OfferStatus[] = ['pending', 'countered', 'accepted', 'rejected', 'converted-to-order']
+const OFFER_STATUSES: OfferStatus[] = ['pending', 'countered', 'accepted', 'awaiting-payment', 'paid', 'rejected', 'expired', 'converted-to-order']
 
 interface Offer {
   /** Backend UUID — use this for every API call. */
@@ -55,6 +57,11 @@ interface Offer {
   expiresAt: string
   respondedAt: string
   createdAt: string
+  /** Payable negotiated price (set at acceptance: counter ?? offered). */
+  acceptedPrice: number | null
+  orderNumber: string
+  orderPaymentStatus: string
+  orderId: string
 }
 
 function toNumber(value: unknown): number {
@@ -89,6 +96,10 @@ function mapApiOffer(o: ApiOffer): Offer {
     expiresAt: o.expiresAt?.split('T')[0] || '',
     respondedAt: o.respondedAt?.split('T')[0] || '',
     createdAt: o.createdAt?.split('T')[0] || new Date().toISOString().split('T')[0],
+    acceptedPrice: o.acceptedPrice != null ? toNumber(o.acceptedPrice) : null,
+    orderNumber: o.order?.orderNumber || '',
+    orderPaymentStatus: o.order?.paymentStatus || '',
+    orderId: o.order?.id || '',
   }
 }
 
@@ -104,6 +115,9 @@ const statusConfig: Record<string, StatusCfg> = {
   countered: { label: 'Countered', color: 'text-[var(--accent-blue)]', bg: 'bg-[var(--accent-blue)]/10', icon: HandCoins },
   accepted: { label: 'Accepted', color: 'text-[var(--success)]', bg: 'bg-[var(--success)]/10', icon: CheckCircle },
   rejected: { label: 'Rejected', color: 'text-[var(--danger)]', bg: 'bg-[var(--danger)]/10', icon: XCircle },
+  'awaiting-payment': { label: 'Awaiting Payment', color: 'text-[var(--accent-teal)]', bg: 'bg-[var(--accent-teal)]/10', icon: Clock },
+  paid: { label: 'Paid', color: 'text-[var(--success)]', bg: 'bg-[var(--success)]/10', icon: CheckCircle },
+  expired: { label: 'Expired', color: 'text-[var(--text-muted)]', bg: 'bg-[var(--text-muted)]/10', icon: AlertTriangle },
   'converted-to-order': { label: 'Converted to Order', color: 'text-[var(--accent-teal)]', bg: 'bg-[var(--accent-teal)]/10', icon: ShoppingCart },
 }
 
@@ -425,6 +439,24 @@ export default function AdminOffers() {
                 </div>
               )}
 
+              {(selectedOffer.status === 'awaiting-payment' || selectedOffer.status === 'paid') && selectedOffer.orderNumber && (
+                <div className="rounded-xl border border-[var(--accent-teal)]/20 bg-[var(--accent-teal)]/5 p-4 space-y-2">
+                  <p className="text-xs font-bold text-[var(--accent-teal)]">
+                    {selectedOffer.status === 'paid' ? 'Paid via PayPal' : 'Payment started — awaiting PayPal'}
+                  </p>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-[var(--text-muted)]">Order</span>
+                    <span className="font-mono font-bold text-[var(--text-secondary)]">{selectedOffer.orderNumber}</span>
+                  </div>
+                  {selectedOffer.orderPaymentStatus && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-[var(--text-muted)]">Payment status</span>
+                      <span className="font-bold text-[var(--text-secondary)] capitalize">{selectedOffer.orderPaymentStatus}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {selectedOffer.status === 'converted-to-order' && (
                 <div className="rounded-xl border border-[var(--accent-teal)]/20 bg-[var(--accent-teal)]/5 p-4 text-center">
                   <ShoppingCart size={20} className="mx-auto text-[var(--accent-teal)] mb-1" />
@@ -450,6 +482,9 @@ export default function AdminOffers() {
                   <div className="flex justify-between text-xs"><span className="text-[var(--text-muted)]">Offered unit price</span><span className="font-mono font-bold">${selectedOffer.offeredPrice.toLocaleString()}</span></div>
                   {selectedOffer.counterPrice != null && (
                     <div className="flex justify-between text-xs"><span className="text-[var(--text-muted)]">Counter price</span><span className="font-mono font-bold text-[var(--accent-blue)]">${selectedOffer.counterPrice.toLocaleString()}</span></div>
+                  )}
+                  {selectedOffer.acceptedPrice != null && (
+                    <div className="flex justify-between text-xs"><span className="text-[var(--text-muted)]">Accepted (payable) price</span><span className="font-mono font-bold text-[var(--success)]">${selectedOffer.acceptedPrice.toLocaleString()}</span></div>
                   )}
                   <div className="flex justify-between text-xs"><span className="text-[var(--text-muted)]">Quantity</span><span className="font-mono font-bold">{selectedOffer.quantity}</span></div>
                   <div className="flex justify-between text-sm font-bold pt-1 border-t border-[var(--border)]"><span>Total</span><span className="font-mono text-[var(--accent-gold)]">${selectedOffer.total.toLocaleString()}</span></div>

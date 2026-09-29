@@ -194,6 +194,10 @@ export interface Order {
   cancelRequested?: boolean
   cancelReason?: string | null
   paymentIntentId?: string | null
+  // Accepted-offer provenance — null/undefined for regular checkout orders.
+  offerId?: string | null
+  originalListedPrice?: number | null
+  negotiatedPrice?: number | null
   createdAt: string
   updatedAt?: string | null
   // Relations
@@ -267,15 +271,21 @@ export interface Offer {
   customerEmail: string
   offeredPrice: number
   counterPrice?: number | null
+  /** The negotiated price actually payable (set at acceptance: counter ?? offered). */
+  acceptedPrice?: number | null
   message?: string | null
   status: string
   quantity?: number | null
   adminNotes?: string | null
   expiresAt?: string | null
+  acceptedAt?: string | null
   respondedAt?: string | null
   createdAt: string
   updatedAt?: string | null
-  product?: { name: string; sku: string; regularPrice: number } | null
+  /** Order created for this offer's payment (accepted-offer PayPal flow). */
+  orderId?: string | null
+  order?: { id: string; orderNumber: string; status: string; paymentStatus: string; total?: number | null; currency?: string | null } | null
+  product?: { id?: string; slug?: string; name: string; sku: string; regularPrice: number; images?: { url: string; altText?: string | null; isMain?: boolean; sortOrder?: number }[] } | null
   customer?: { id: string; name: string; company?: string | null; country?: string | null } | null
   // Relation returned by offerAdminService (nesting lives here, not at the top level).
   rfq?: { id: string; rfqNumber: string } | null

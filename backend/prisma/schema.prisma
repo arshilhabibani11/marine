@@ -292,6 +292,14 @@ model Order {
   items    OrderItem[]
   timeline OrderTimeline[]
 
+  // Accepted-offer provenance (Make an Offer → PayPal flow). Null for regular
+  // checkout orders. negotiatedPrice/originalListedPrice are the historical
+  // truth for offer orders and are never derived from the current product price.
+  offerId             String?   @unique @map("offer_id") @db.Uuid
+  originalListedPrice Decimal?  @map("original_listed_price") @db.Decimal(12, 2)
+  negotiatedPrice     Decimal?  @map("negotiated_price") @db.Decimal(12, 2)
+  offer               Offer?    @relation("OfferOrder", fields: [offerId], references: [id], onDelete: SetNull)
+
   @@index([customerId])
   @@index([status])
   @@index([orderNumber])
@@ -423,6 +431,7 @@ model Offer {
   counterPrice  Decimal?  @map("counter_price") @db.Decimal(12, 2)
   adminNotes    String?   @map("admin_notes") @db.Text
   expiresAt     DateTime? @map("expires_at")
+  acceptedAt    DateTime? @map("accepted_at")
   respondedAt   DateTime? @map("responded_at")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
@@ -431,9 +440,19 @@ model Offer {
   rfq      Rfq?      @relation(fields: [rfqId], references: [id], onDelete: SetNull)
   customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
+  // Negotiated price actually payable (counterPrice ?? offeredPrice at
+  // acceptance). Distinct from the public product price — never mutates it.
+  acceptedPrice Decimal? @map("accepted_price") @db.Decimal(12, 2)
+  // Order created for this offer's payment (PayPal flow). The offer owns the
+  // lifecycle; the order carries the historical pricing snapshot.
+  orderId       String?  @map("order_id") @db.Uuid
+  order         Order?   @relation("OfferOrder")
+
   @@index([status])
   @@index([productId])
   @@index([customerEmail])
+  @@index([customerId])
+  @@index([orderId])
   @@map("offers")
 }
 

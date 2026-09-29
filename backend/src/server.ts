@@ -130,6 +130,7 @@ import paypalWebhookRoutes from './routes/webhooks/paypal.js'
 // ─── Email Queue Processor ────────────────────────────────────
 import { startEmailQueueProcessor, stopEmailQueueProcessor } from './services/email.js'
 import { startNotificationScheduler, stopNotificationScheduler } from './services/notificationScheduler.js'
+import { startOfferExpiryScheduler, stopOfferExpiryScheduler } from './services/offerExpiryScheduler.js'
 
 // ─── App Setup ─────────────────────────────────────────────────
 const app = express()
@@ -396,6 +397,7 @@ async function shutdown(signal: string, exitCode: number) {
   startupLogger.info(`Shutting down (${signal})...`)
   stopEmailQueueProcessor()
   stopNotificationScheduler()
+  stopOfferExpiryScheduler()
   httpServer?.close()
   await prisma.$disconnect().catch(() => {})
   process.exit(exitCode)
@@ -464,6 +466,7 @@ async function main() {
     // guarded against errors.
     startEmailQueueProcessor()
     startNotificationScheduler()
+    startOfferExpiryScheduler()
     startupLogger.info('APPLICATION_READY')
 
     // Heartbeat: an alive process prints every 30s, so an empty runtime log

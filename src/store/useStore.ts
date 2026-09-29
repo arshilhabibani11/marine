@@ -101,6 +101,8 @@ interface AppState {
   isSessionLoading: boolean
   showAuthModal: boolean
   authError: string | null
+  /** One-shot flag set after submitting an offer (product page → toast/redirect). */
+  offerJustSubmitted: boolean
   login: (email: string, password: string) => Promise<boolean>
   register: (name: string, email: string, password: string, phone?: string, company?: string, country?: string) => Promise<boolean>
   logout: () => Promise<void>
@@ -497,6 +499,7 @@ export const useStore = create<AppState>((set, get) => ({
     set({ orderId: `AT-ORD-${Math.floor(10000 + Math.random() * 90000)}` }),
   orderSummary: null,
   setOrderSummary: (orderSummary) => set({ orderSummary }),
+  offerJustSubmitted: false,
   orderSkippedItems: [],
   setOrderSkippedItems: (orderSkippedItems) => set({ orderSkippedItems }),
   cancelRequested: false,

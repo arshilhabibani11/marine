@@ -4,6 +4,39 @@ import { logAudit } from '../utils/audit.js'
 import { sendOfferDecision } from './emailSenders.js'
 import logger from '../utils/logger.js'
 import type { AuthUser } from '../middleware/auth.js'
+import { canDecide, acceptedAmountOf, OFFER_PAYMENT_WINDOW_MS, type AdminOfferAction } from './offerRules.js'
+
+/** Guarded admin decision wrapper: re-checks the current status atomically so
+ * double-clicks and racing admins can never double-apply a decision. */
+async function guardedDecision(
+  id: string,
+  action: AdminOfferAction,
+  actor: AuthUser,
+  data: { status: string; counterPrice?: number; acceptedPrice?: number; expiresAt?: Date; acceptedAt?: Date },
+) {
+  const existing = await prisma.offer.findUnique({ where: { id } })
+  if (!existing) throw Object.assign(new Error('Offer not found'), { status: 404 })
+  if (!canDecide(existing.status, action)) {
+    throw Object.assign(new Error(`Offer cannot be ${action}ed from status "${existing.status}"`), { status: 409 })
+  }
+
+  const updated = await prisma.offer.updateMany({
+    where: { id, status: existing.status },
+    data: { respondedAt: new Date(), ...data },
+  })
+  if (updated.count === 0) {
+    throw Object.assign(new Error('Offer was just modified — reload and try again'), { status: 409 })
+  }
+
+  const offer = await prisma.offer.findUnique({
+    where: { id },
+    include: {
+      product: { select: { name: true } },
+      order: { select: { id: true, orderNumber: true, paymentStatus: true } },
+    },
+  })
+  return offer!
+}
 
 // ─── Queries ──────────────────────────────────────────────────
 
@@ -35,6 +68,7 @@ export async function listOffers(params: { status?: string; productId?: string; 
         product: { select: { id: true, name: true, sku: true, regularPrice: true } },
         rfq: { select: { id: true, rfqNumber: true } },
         customer: { select: { id: true, name: true, company: true, country: true } },
+        order: { select: { id: true, orderNumber: true, paymentStatus: true } },
       },
       orderBy: { createdAt: 'desc' },
       skip, take: limit,
@@ -90,6 +124,7 @@ export async function getOffer(id: string) {
       product: { select: { id: true, name: true, sku: true, regularPrice: true, salePrice: true, stockCount: true } },
       rfq: { select: { id: true, rfqNumber: true } },
       customer: { select: { id: true, name: true, company: true, country: true } },
+      order: { select: { id: true, orderNumber: true, paymentStatus: true, status: true, total: true } },
     },
   })
   if (!offer) throw Object.assign(new Error('Offer not found'), { status: 404 })
@@ -99,34 +134,41 @@ export async function getOffer(id: string) {
 // ─── Mutations ────────────────────────────────────────────────
 
 export async function acceptOffer(id: string, actor: AuthUser) {
-  const offer = await prisma.offer.update({
-    where: { id },
-    data: { status: 'accepted', respondedAt: new Date() },
-    include: { product: { select: { name: true } } },
+  // Snapshot the price the customer will actually pay BEFORE the guarded flip:
+  // a pending counter supersedes the customer's original amount.
+  const current = await prisma.offer.findUnique({ where: { id } })
+  if (!current) throw Object.assign(new Error('Offer not found'), { status: 404 })
+  const acceptedPrice = acceptedAmountOf(current)
+
+  const offer = await guardedDecision(id, 'accept', actor, {
+    status: 'accepted',
+    acceptedPrice,
+    // Payment window starts at acceptance; lazily enforced + swept (offerService).
+    acceptedAt: new Date(),
+    expiresAt: new Date(Date.now() + OFFER_PAYMENT_WINDOW_MS),
   })
-  await logAudit({ actor, action: 'offer.accept', entityType: 'offer', entityId: offer.id })
+
+  await logAudit({
+    actor, action: 'offer.accept', entityType: 'offer', entityId: offer.id, entityName: offer.offerNumber,
+    newValue: { status: 'accepted', acceptedPrice },
+  })
   sendOfferDecision({ to: offer.customerEmail, offerNumber: offer.offerNumber, productName: offer.product?.name || 'Unknown', decision: 'accepted' }).catch(err => logger.error({ err }, 'Offer email failed'))
   return { offer }
 }
 
 export async function rejectOffer(id: string, actor: AuthUser) {
-  const offer = await prisma.offer.update({
-    where: { id },
-    data: { status: 'rejected', respondedAt: new Date() },
-    include: { product: { select: { name: true } } },
-  })
-  await logAudit({ actor, action: 'offer.reject', entityType: 'offer', entityId: offer.id })
+  const offer = await guardedDecision(id, 'reject', actor, { status: 'rejected' })
+  await logAudit({ actor, action: 'offer.reject', entityType: 'offer', entityId: offer.id, entityName: offer.offerNumber })
   sendOfferDecision({ to: offer.customerEmail, offerNumber: offer.offerNumber, productName: offer.product?.name || 'Unknown', decision: 'rejected' }).catch(err => logger.error({ err }, 'Offer email failed'))
   return { offer }
 }
 
 export async function counterOffer(id: string, counterPrice: number, actor: AuthUser) {
-  const offer = await prisma.offer.update({
-    where: { id },
-    data: { status: 'countered', counterPrice, respondedAt: new Date() },
-    include: { product: { select: { name: true } } },
+  const offer = await guardedDecision(id, 'counter', actor, { status: 'countered', counterPrice })
+  await logAudit({
+    actor, action: 'offer.counter', entityType: 'offer', entityId: offer.id, entityName: offer.offerNumber,
+    newValue: { counterPrice },
   })
-  await logAudit({ actor, action: 'offer.counter', entityType: 'offer', entityId: offer.id })
   sendOfferDecision({ to: offer.customerEmail, offerNumber: offer.offerNumber, productName: offer.product?.name || 'Unknown', decision: 'countered', counterPrice }).catch(err => logger.error({ err }, 'Offer email failed'))
   return { offer }
 }
@@ -137,10 +179,13 @@ export async function convertOfferToOrder(id: string, actor: AuthUser) {
     include: { product: { select: { id: true, name: true, sku: true, regularPrice: true, salePrice: true } } },
   })
   if (!offer) throw Object.assign(new Error('Offer not found'), { status: 404 })
+  if (offer.orderId) throw Object.assign(new Error('This offer already has an order'), { status: 400 })
   if (offer.status !== 'accepted') throw Object.assign(new Error('Only accepted offers can be converted to orders'), { status: 400 })
 
-  const price = Number(offer.counterPrice || offer.offeredPrice)
+  const price = Number(offer.acceptedPrice ?? offer.counterPrice ?? offer.offeredPrice)
 
+  // Historical pricing snapshot + offer link so both conversion paths
+  // (bank-transfer here, PayPal via offerService) produce identical order data.
   const order = await prisma.order.create({
     data: {
       orderNumber: await generateOrderNumber(),
@@ -152,8 +197,11 @@ export async function convertOfferToOrder(id: string, actor: AuthUser) {
       tax: 0,
       total: price * offer.quantity + 25,
       currency: 'USD',
+      originalListedPrice: offer.product ? Number(offer.product.regularPrice) : null,
+      negotiatedPrice: price,
       customerNotes: `Converted from offer ${offer.offerNumber}`,
       customerId: offer.customerId || undefined,
+      offerId: offer.id,
     },
   })
 
@@ -182,7 +230,16 @@ export async function convertOfferToOrder(id: string, actor: AuthUser) {
     include: { items: true },
   })
 
-  await prisma.offer.update({ where: { id: offer.id }, data: { status: 'converted-to-order' } })
+  // Guarded transition: a racing PayPal payment or second conversion cannot
+  // claim the same offer after the order exists.
+  const claimed = await prisma.offer.updateMany({
+    where: { id: offer.id, status: offer.status, orderId: null },
+    data: { status: 'converted-to-order', acceptedPrice: price, orderId: order.id, ...(offer.status === 'accepted' ? {} : { acceptedAt: new Date() }) },
+  })
+  if (claimed.count === 0) {
+    await prisma.order.delete({ where: { id: order.id } }).catch(() => {})
+    throw Object.assign(new Error('Offer was just converted or paid — reload'), { status: 409 })
+  }
 
   await logAudit({
     actor, action: 'offer.convert-to-order', entityType: 'offer', entityId: offer.id, entityName: offer.offerNumber,

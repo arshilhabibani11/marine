@@ -4,6 +4,7 @@ import { sendOrderConfirmation } from './emailSenders.js'
 import logger from '../utils/logger.js'
 import { getPaypalAccessToken, PAYPAL_BASE, PAYPAL_WEBHOOK_ID } from '../utils/paypal.js'
 import { paypalReturnUrl, paypalCancelUrl } from '../utils/paypalUrls.js'
+import { markOfferPaid } from './offerService.js'
 import type { Prisma } from '@prisma/client'
 
 const hookLog = logger.child({ context: 'paypal-service' })
@@ -145,6 +146,11 @@ export async function handleCaptureCompleted(resource: Record<string, unknown>) 
       hookLog.error({ orderId: order.id }, 'Stock decrement failed after PayPal webhook capture — order reverted to pending')
       return
     }
+
+    // Accepted-offer flow: mark the linked offer paid (guarded, idempotent).
+    // Placed after the stock-failure revert so the offer never shows 'paid'
+    // while its order has been rolled back for manual review.
+    await markOfferPaid(order.id).catch(err => hookLog.error({ err, orderId: order.id }, 'Offer paid flip failed'))
 
     await logAudit({
       action: 'order.payment.confirmed', entityType: 'order', entityId: order.id, entityName: order.orderNumber,
@@ -340,6 +346,10 @@ export async function capturePaypalOrder(paypalOrderId: string, orderId: string,
     hookLog.error({ orderId }, 'Stock decrement failed after PayPal capture — order reverted to pending')
     throw Object.assign(new Error('Payment captured but stock could not be confirmed. Our team will contact you.'), { status: 409 })
   }
+
+  // Accepted-offer flow: mark the linked offer paid (guarded, idempotent).
+  // After the stock-failure revert for the same reason as the webhook path.
+  await markOfferPaid(orderId).catch(err => hookLog.error({ err, orderId }, 'Offer paid flip failed'))
 
   await logAudit({
     action: 'order.payment.confirmed', entityType: 'order', entityId: orderId, entityName: order.orderNumber,

@@ -32,6 +32,8 @@ const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
 const ResetPassword = lazy(() => import('./pages/ResetPassword'))
 const TrackOrder = lazy(() => import('./pages/TrackOrder'))
 const OrderHistory = lazy(() => import('./pages/account/OrderHistory'))
+const MyOffers = lazy(() => import('./pages/account/MyOffers'))
+const OfferCheckout = lazy(() => import('./pages/account/OfferCheckout'))
 const ProfileEdit = lazy(() => import('./pages/account/ProfileEdit'))
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'))
 const TermsOfService = lazy(() => import('./pages/TermsOfService'))
@@ -137,6 +139,8 @@ function LocaleLayout() {
               <Route path="reset-password" element={<ResetPassword />} />
               <Route path="track-order" element={<TrackOrder />} />
               <Route path="account/orders" element={<OrderHistory />} />
+              <Route path="account/offers" element={<MyOffers />} />
+              <Route path="account/offers/:id/pay" element={<OfferCheckout />} />
               <Route path="account/profile" element={<ProfileEdit />} />
               <Route path="product/:id" element={<ProductDetail />} />
               <Route path="privacy-policy" element={<PrivacyPolicy />} />

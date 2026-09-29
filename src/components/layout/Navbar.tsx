@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
-  Clock, Globe, Lock, LogIn, LogOut, Mail, Menu, Package,
+  Clock, Globe, HandCoins, Lock, LogIn, LogOut, Mail, Menu, Package,
   Phone, ShoppingCart, Truck, User, UserCircle2, X,
 } from 'lucide-react'
 import { useStore } from '../../store/useStore'
@@ -395,6 +395,13 @@ export function Navbar() {
                         className="flex items-center gap-3 px-4 py-2.5 text-xs font-semibold text-[var(--nav-text-muted)] no-underline transition-colors hover:bg-[var(--surface-soft)] hover:text-[var(--nav-text)]"
                       >
                         <Package size={14} className="text-[var(--text-muted)]" /> My Orders
+                      </Link>
+                      <Link
+                        to={localizedPath('/account/offers')}
+                        onClick={() => setProfileOpen(false)}
+                        className="flex items-center gap-3 px-4 py-2.5 text-xs font-semibold text-[var(--nav-text-muted)] no-underline transition-colors hover:bg-[var(--surface-soft)] hover:text-[var(--nav-text)]"
+                      >
+                        <HandCoins size={14} className="text-[var(--text-muted)]" /> My Offers
                       </Link>
                       <div className="border-t border-[var(--border)]">
                         <button
