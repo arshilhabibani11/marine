@@ -24,16 +24,21 @@ export function RelatedProducts({ products }: RelatedProductsProps) {
               key={item.id}
               className="bg-[var(--secondary-bg)] border border-[var(--border)] overflow-hidden transition-all duration-300 hover:border-l-[var(--accent-primary)] hover:-translate-y-1 rounded-xl group flex flex-col justify-between"
             >
-              <Link to={`/product/${item.id}`} className="overflow-hidden bg-[var(--primary-bg)] flex items-center justify-center relative block">
-                <OptimizedImage
-                  src={getProductImageUrl(item.filename)}
-                  alt={item.name}
-                  width={400}
-                  height={400}
-                  loading="lazy"
-                  sizes="(max-width: 1024px) 50vw, 25vw"
-                  className="w-full aspect-square object-cover transition-transform duration-500 group-hover:scale-110"
-                />
+              <Link to={`/product/${item.id}`} className="overflow-hidden bg-[var(--surface)] border-b border-[var(--border)] flex items-center justify-center relative block">
+                {/* object-contain: related photos keep their full shape instead
+                    of being cropped by object-cover */}
+                <div className="aspect-square w-full flex items-center justify-center p-3">
+                  <OptimizedImage
+                    src={getProductImageUrl(item.filename, 0)}
+                    alt={item.name}
+                    width={400}
+                    height={400}
+                    transformWidth={600}
+                    loading="lazy"
+                    sizes="(max-width: 1024px) 50vw, 25vw"
+                    className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-110"
+                  />
+                </div>
                 {item.customLabel && (
                   <span
                     className="absolute top-2 left-2 z-10 px-2 py-0.5 text-xs font-extrabold uppercase rounded"

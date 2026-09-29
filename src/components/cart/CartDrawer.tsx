@@ -191,12 +191,13 @@ export function CartDrawer() {
                           {/* Thumbnail */}
                           <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--secondary-bg)]">
                             <OptimizedImage
-                              src={getProductImageUrl(product.filename)}
+                              src={getProductImageUrl(product.filename, 0)}
                               alt={product.name}
                               width={64}
                               height={64}
+                              transformWidth={160}
                               sizes="64px"
-                              className="h-full w-full object-cover"
+                              className="h-full w-full object-contain p-1"
                             />
                           </div>
 

@@ -85,7 +85,14 @@ export function apiProductToFrontend(api: ApiProduct): Product {
     category: (api.category?.slug || 'other-business') as Product['category'],
     industry: api.industries?.map((i) => i.industry.slug) || [],
     availability: api.availability as Product['availability'],
-    specs: Object.fromEntries(api.specs?.map((s) => [s.name, s.value]) || []),
+    // Filter out empty spec values — admins sometimes save a name with no
+    // value (e.g. "SCUPPER PLUG: ""), which renders as a junk row on the
+    // product page ("SCUPPER PLUG — " with nothing after it).
+    specs: Object.fromEntries(
+      (api.specs || [])
+        .filter((s) => s.name && s.value && s.value.trim().length > 0)
+        .map((s) => [s.name, s.value]),
+    ),
     description: api.description || api.shortDescription || '',
     condition: api.condition as Product['condition'],
     price: effectivePrice,

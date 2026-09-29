@@ -70,12 +70,13 @@ export function CheckoutReview({
             return (
               <div key={item.product.id} className="flex items-center gap-4 py-3 border-b border-[var(--border)] last:border-b-0">
                 <OptimizedImage
-                  src={getProductImageUrl(item.product.filename)}
+                  src={getProductImageUrl(item.product.filename, 0)}
                   alt={item.product.name}
                   width={56}
                   height={56}
+                  transformWidth={160}
                   sizes="56px"
-                  className="w-14 h-14 object-cover rounded border border-[var(--border)]"
+                  className="w-14 h-14 object-contain rounded border border-[var(--border)] bg-[var(--surface)] p-0.5"
                   loading="lazy"
                 />
                 <div className="flex-1 min-w-0">

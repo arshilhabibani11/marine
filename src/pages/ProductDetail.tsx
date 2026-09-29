@@ -20,22 +20,12 @@ import { SEO } from '../components/seo/SEO'
 import { BreadcrumbJsonLd } from '../components/seo/BreadcrumbJsonLd'
 import { useProductDetail } from '../hooks/useApiQuery'
 import { getProductImageUrl } from '../lib/utils'
+import { parseDescription, buildSpecTable, sectionTitle } from '../lib/description'
 import { ProductImageGallery } from '../components/product/ProductImageGallery'
 import { OfferModal } from '../components/product/OfferModal'
 import { Skeleton } from '../components/ui/Skeleton'
 import { RelatedProducts } from '../components/product/RelatedProducts'
 import type { Product } from '../types'
-
-function getProductSpecs(product: Product): Record<string, string> {
-  if (product.specs && Object.keys(product.specs).length > 0) {
-    return product.specs
-  }
-  return {
-    'Brand': product.brand,
-    'Category': product.category.replace(/-/g, ' '),
-    'Condition': product.condition,
-  }
-}
 
 function getSchemaCondition(condition: Product['condition']) {
   if (condition === 'new' || condition === 'unused') return 'https://schema.org/NewCondition'
@@ -138,8 +128,22 @@ export default function ProductDetail() {
 
   const price = product.price
   const effectivePrice = product.onSale && product.salePrice ? product.salePrice : price
-  const specs = getProductSpecs(product)
+
+  // ── Categorized content ────────────────────────────────────────
+  // The admin description is a free-text blob mixing "Label: value" spec
+  // lines and section headers (KEY FEATURES / CONDITION / INCLUDED). Parse it
+  // once so each kind of content renders in its proper place instead of one
+  // wall-of-text paragraph.
+  const parsedDesc = parseDescription(product.description)
+  const specRows = buildSpecTable(parsedDesc, product)
   const readableCategory = product.category.replace(/-/g, ' ')
+  // Structured specs saved through the admin form (name/value pairs with
+  // i18n-able labels). Falls back to Brand/Category/Condition when empty.
+  const formSpecs = product.specs && Object.keys(product.specs).length > 0
+    ? product.specs
+    : { Brand: product.brand, Category: readableCategory, Condition: product.condition }
+  const hasDescriptionContent =
+    parsedDesc.paragraphs.length > 0 || parsedDesc.features.length > 0 || parsedDesc.sections.length > 0
   const productSeoTitle = `${product.name} | ${product.brand} ${readableCategory} spare`
   const productSeoDescription = `${product.name} (${product.sku}) by ${product.brand}. ${product.condition} ${readableCategory} for marine spare parts, ship spares, industrial MRO, and export supply from Bhavnagar, India.`
 
@@ -212,9 +216,9 @@ export default function ProductDetail() {
               <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] font-mono mb-2">
                 <Link to="/shop" className="hover:text-[var(--accent-primary)]">{t('nav.shop')}</Link>
                 <span>/</span>
-                <span className="capitalize">{product.category.replace(/-/g, ' ')}</span>
+                <span className="capitalize">{readableCategory}</span>
               </div>
-              <h1 className="font-display font-bold text-2xl lg:text-3xl tracking-tight text-[var(--text-primary)] leading-snug">{product.name}</h1>
+              <h1 className="font-display font-bold text-2xl lg:text-[2rem] tracking-tight text-[var(--text-primary)] leading-snug">{product.name}</h1>
               <div className="flex items-center gap-3 mt-3 flex-wrap">
                 <span className="text-xs font-semibold px-2.5 py-0.5 border text-[var(--accent-primary)] border-[var(--info-border)] bg-[var(--surface)] rounded">
                   {t('product.brandPrefix', { brand: product.brand })}
@@ -264,23 +268,49 @@ export default function ProductDetail() {
               </div>
             </div>
 
-            {/* Description */}
-            <div className="p-4 bg-[var(--secondary-bg)] border border-[var(--border)] rounded-xl text-xs leading-relaxed">
-              <p className="text-[var(--text-secondary)]">{product.description}</p>
-            </div>
-
-            {/* Condition detail */}
-            <div className="space-y-3 p-4 bg-[var(--secondary-bg)] border border-[var(--border)] rounded-xl text-xs leading-relaxed">
-              <div>
-                <span className="font-bold text-[var(--text-primary)] uppercase tracking-wide block mb-1">{t('product.condition')}</span>
-                <p className="text-[var(--text-secondary)]">
-                  {product.condition === 'new' && t('product.conditionNew')}
-                  {product.condition === 'refurbished' && t('product.conditionRefurbished')}
-                  {product.condition === 'used' && t('product.conditionUsed')}
-                  {product.condition === 'reconditioned' && t('product.conditionReconditioned')}
-                  {product.condition === 'unused' && t('product.conditionUnused')}
-                </p>
+            {/* Item Specifics — parsed from the description blob + product fields.
+                This is the categorized "Label: value" table (Brand, Model, IMPA,
+                Size, Material...); it replaces the old junk spec list and the
+                wall-of-text description paragraph above the buy box. */}
+            {specRows.length > 0 && (
+              <div className="border border-[var(--border)] rounded-xl overflow-hidden">
+                <div className="px-4 py-2.5 bg-[var(--secondary-bg)] border-b border-[var(--border)] font-bold text-sm text-[var(--text-primary)] uppercase tracking-wide">
+                  {t('product.itemSpecifics')}
+                </div>
+                <dl className="divide-y divide-[var(--border)]/60">
+                  {specRows.map((row, idx) => (
+                    <div key={`${row.label}-${idx}`} className="grid grid-cols-[minmax(96px,38%)_1fr]">
+                      <dt className="px-4 py-2 text-xs font-semibold text-[var(--text-muted)] bg-[var(--secondary-bg)]/40 flex items-start">
+                        {row.label}
+                      </dt>
+                      <dd className="px-4 py-2 text-xs text-[var(--text-primary)] min-w-0 break-words flex items-start">{row.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+                {/* Structured specs saved in the admin form (when any exist) */}
+                {product.specs && Object.keys(product.specs).length > 0 && (
+                  <div className="border-t border-[var(--border)]/60">
+                    {Object.entries(product.specs).map(([key, val]) => (
+                      <div key={key} className="grid grid-cols-[minmax(96px,38%)_1fr]">
+                        <span className="px-4 py-2 text-xs font-semibold text-[var(--text-muted)] bg-[var(--secondary-bg)]/40">{t(`product.${key}`)}</span>
+                        <span className="px-4 py-2 text-xs text-[var(--text-primary)] min-w-0 break-words">{val}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
+            )}
+
+            {/* Condition detail (kept from the admin form's condition field) */}
+            <div className="p-4 bg-[var(--secondary-bg)] border border-[var(--border)] rounded-xl text-xs leading-relaxed">
+              <span className="font-bold text-[var(--text-primary)] uppercase tracking-wide block mb-1">{t('product.condition')}</span>
+              <p className="text-[var(--text-secondary)]">
+                {product.condition === 'new' && t('product.conditionNew')}
+                {product.condition === 'refurbished' && t('product.conditionRefurbished')}
+                {product.condition === 'used' && t('product.conditionUsed')}
+                {product.condition === 'reconditioned' && t('product.conditionReconditioned')}
+                {product.condition === 'unused' && t('product.conditionUnused')}
+              </p>
             </div>
 
             {/* In Stock Actions — ref for sticky mobile bar */}
@@ -351,17 +381,20 @@ export default function ProductDetail() {
               </div>
             )}
 
-            {/* Specs */}
-            <div className="border-t border-[var(--border)] pt-4 space-y-2.5 text-xs">
-              {Object.entries(specs).map(([key, val]) => (
-                <div key={key} className="grid grid-cols-[auto_1fr] border-b border-[var(--border)]/40 pb-2">
-                  <span className="font-semibold text-[var(--text-muted)] uppercase tracking-wide text-xs">
-                    {t(`product.${key}`)}
-                  </span>
-                  <span className="text-[var(--text-primary)] min-w-0 break-words">{val}</span>
-                </div>
-              ))}
-            </div>
+            {/* Specs — legacy: only shown when the description blob produced
+                nothing (covers older products with structured specs only) */}
+            {specRows.length === 0 && (
+              <div className="border-t border-[var(--border)] pt-4 space-y-2.5 text-xs">
+                {Object.entries(formSpecs).map(([key, val]) => (
+                  <div key={key} className="grid grid-cols-[auto_1fr] border-b border-[var(--border)]/40 pb-2">
+                    <span className="font-semibold text-[var(--text-muted)] uppercase tracking-wide text-xs">
+                      {t(`product.${key}`)}
+                    </span>
+                    <span className="text-[var(--text-primary)] min-w-0 break-words">{val}</span>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Trust badges */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2 text-xs font-mono text-[var(--text-secondary)]">
@@ -373,38 +406,81 @@ export default function ProductDetail() {
           </div>
         </div>
 
-        {/* DESCRIPTION SECTION */}
-        <section className="mt-16 border-t border-[var(--border)] pt-10 text-left">
-          <div className="border-b border-[var(--border)] mb-6">
-            <span className="inline-block border-b-2 border-[var(--accent-primary)] pb-2 font-semibold text-sm text-[var(--accent-primary)] tracking-wide uppercase">
-              {t('product.description')}
-            </span>
-          </div>
-          <div className="space-y-6 text-sm text-[var(--text-secondary)] leading-relaxed max-w-[800px]">
-            <div>
-              <h3 className="font-bold text-[var(--text-primary)] uppercase text-base mb-2">{product.name}</h3>
-              <p className="font-semibold text-[var(--accent-teal)]">
-                {product.condition === 'new' ? t('product.conditionNewUpper')
-                  : product.condition === 'reconditioned' ? t('product.conditionReconditionedUpper')
-                  : product.condition === 'refurbished' ? t('product.conditionRefurbishedUpper')
-                  : product.condition === 'unused' ? t('product.conditionUnusedUpper')
-                  : t('product.conditionUsedUpper')}
-              </p>
-              <p className="mt-2 text-[var(--success)] font-medium">{t('product.freeShipping')}</p>
-              <p className="text-[var(--text-muted)] text-xs mt-1">{t('product.importDuty')}</p>
+        {/* DESCRIPTION SECTION — categorized content blocks */}
+        {hasDescriptionContent && (
+          <section className="mt-16 border-t border-[var(--border)] pt-10 text-left">
+            <div className="border-b border-[var(--border)] mb-6">
+              <span className="inline-block border-b-2 border-[var(--accent-primary)] pb-2 font-semibold text-sm text-[var(--accent-primary)] tracking-wide uppercase">
+                {t('product.description')}
+              </span>
             </div>
-            <div className="space-y-3 text-xs text-[var(--text-secondary)] bg-[var(--secondary-bg)] border border-[var(--border)] p-5 rounded-xl">
-              <h4 className="font-bold text-[var(--text-primary)] text-sm mb-2">{t('product.shippingInfo')} :-</h4>
-              <ul className="list-disc list-inside space-y-2">
-                <li>{t('product.shippingLine1')}</li>
-                <li>{t('product.shippingLine2')}</li>
-                <li>{t('product.shippingLine3')}</li>
-                <li>{t('product.shippingLine4')}</li>
-                <li>{t('product.shippingLine5')}</li>
-              </ul>
+            <div className="space-y-8 text-sm text-[var(--text-secondary)] leading-relaxed max-w-[800px]">
+              {/* Free-form overview paragraphs */}
+              {parsedDesc.paragraphs.length > 0 && (
+                <div className="space-y-3">
+                  {parsedDesc.paragraphs.map((para, i) => (
+                    <p key={i}>{para}</p>
+                  ))}
+                </div>
+              )}
+
+              {/* KEY FEATURES — bullet list with accent markers */}
+              {parsedDesc.features.length > 0 && (
+                <div>
+                  <h3 className="heading-lg uppercase tracking-wide mb-3">{t('product.keyFeatures')}</h3>
+                  <ul className="space-y-2">
+                    {parsedDesc.features.map((f, i) => (
+                      <li key={i} className="flex items-start gap-2.5">
+                        <Check size={14} className="text-[var(--accent-primary)] mt-0.5 shrink-0" aria-hidden />
+                        <span>{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Titled sections parsed from the blob (Condition notes, What's
+                  Included, Shipping, Warranty...) */}
+              {parsedDesc.sections.map((section, i) => (
+                <div
+                  key={`${section.key}-${i}`}
+                  className="bg-[var(--secondary-bg)] border border-[var(--border)] p-5 rounded-xl"
+                >
+                  <h3 className="font-bold text-[var(--text-primary)] text-sm mb-2 uppercase tracking-wide">
+                    {section.title || sectionTitle(section.key)}
+                  </h3>
+                  {section.paragraphs.length > 0 && (
+                    <div className="space-y-2">
+                      {section.paragraphs.map((para, j) => (
+                        <p key={j}>{para}</p>
+                      ))}
+                    </div>
+                  )}
+                  {section.bullets.length > 0 && (
+                    <ul className="list-disc list-inside space-y-1.5 mt-2">
+                      {section.bullets.map((b, j) => (
+                        <li key={j}>{b}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
+
+              {/* Static shipping info block (kept — it's storefront policy,
+                  not product content) */}
+              <div className="space-y-3 text-xs text-[var(--text-secondary)] bg-[var(--secondary-bg)] border border-[var(--border)] p-5 rounded-xl">
+                <h4 className="font-bold text-[var(--text-primary)] text-sm mb-2">{t('product.shippingInfo')}</h4>
+                <ul className="list-disc list-inside space-y-2">
+                  <li>{t('product.shippingLine1')}</li>
+                  <li>{t('product.shippingLine2')}</li>
+                  <li>{t('product.shippingLine3')}</li>
+                  <li>{t('product.shippingLine4')}</li>
+                  <li>{t('product.shippingLine5')}</li>
+                </ul>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
 
         {/* We've Got You Covered */}
         <section className="mt-16 bg-[var(--secondary-bg)] border border-[var(--border)] p-8 rounded-2xl text-center">

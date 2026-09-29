@@ -7,6 +7,14 @@ interface OptimizedImageProps extends React.ImgHTMLAttributes<HTMLImageElement> 
   decoding?: 'async' | 'sync' | 'auto'
   sizes?: string
   optimized?: boolean
+  /**
+   * Width passed to the Cloudinary URL transform. Defaults to 800; set 0 to
+   * disable the transform (e.g. og:image). Product-detail images pass a
+   * larger width so uploaded photos render sharp at full column size —
+   * previously uploaded (full-URL) images got NO transform and shipped
+   * 2000px originals, while they were displayed small.
+   */
+  transformWidth?: number
 }
 
 import { applyImageFallback, applyCloudinaryTransform } from '../../lib/utils'
@@ -33,11 +41,12 @@ export function OptimizedImage({
   decoding = 'async',
   className,
   onError,
+  transformWidth = 800,
   ...rest
 }: OptimizedImageProps) {
   return (
     <img
-      src={applyCloudinaryTransform(src, 800)}
+      src={applyCloudinaryTransform(src, transformWidth)}
       alt={alt}
       width={width}
       height={height}

@@ -20,16 +20,23 @@ function ProductCard({ product, addedIds, onAddToCart }: { product: Product; add
 
   return (
     <div className="card flex h-full flex-col overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-[var(--accent-primary)] group">
-      <Link to={`/product/${product.id}`} className="block relative overflow-hidden bg-[var(--surface-soft)]">
-        <OptimizedImage
-          src={getProductImageUrl(product.filename)}
-          alt={product.name}
-          width={400}
-          height={400}
-          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-          className="w-full aspect-square object-cover border-b border-[var(--border)] transition-transform duration-500 group-hover:scale-105"
-          loading="lazy"
-        />
+      <Link to={`/product/${product.id}`} className="block relative overflow-hidden bg-[var(--surface)] border-b border-[var(--border)]">
+        {/* object-contain on a padded neutral stage: product photos keep their
+            full shape (IMPA codes, nameplates and labels stay readable) instead
+            of being cropped like object-cover did. transformWidth caps uploaded
+            full-URL images at 600px instead of shipping 2000px originals. */}
+        <div className="aspect-square w-full flex items-center justify-center p-3">
+          <OptimizedImage
+            src={getProductImageUrl(product.filename, 0)}
+            alt={product.name}
+            width={400}
+            height={400}
+            transformWidth={600}
+            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+            className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105"
+            loading="lazy"
+          />
+        </div>
         {product.customLabel && (
           <span
             className="absolute top-2 left-2 z-10 px-2.5 py-1 text-xs font-extrabold uppercase tracking-wider rounded"
@@ -50,9 +57,13 @@ function ProductCard({ product, addedIds, onAddToCart }: { product: Product; add
         )}
       </Link>
       <div className="flex flex-1 flex-col p-4">
-        <span className="inline-block font-mono text-xs px-2 py-1 rounded-full border text-[var(--accent-primary)] border-[var(--accent-primary)]/15 bg-[var(--accent-primary)]/5 mb-2">
-          {product.brand}
-        </span>
+        {/* Brand chip — fixed height row so every card's title starts at the
+            same vertical position regardless of chip wrapping */}
+        <div className="min-h-[26px] mb-2">
+          <span className="inline-block font-mono text-xs px-2 py-0.5 rounded-full border text-[var(--accent-primary)] border-[var(--accent-primary)]/15 bg-[var(--accent-primary)]/5">
+            {product.brand}
+          </span>
+        </div>
         <h4 className="text-label leading-tight hover:text-[var(--accent-primary)] transition-colors min-h-[40px]">
           <Link to={`/product/${product.id}`}>{product.name}</Link>
         </h4>
@@ -77,7 +88,7 @@ function ProductCard({ product, addedIds, onAddToCart }: { product: Product; add
                 </span>
               )}
             </div>
-            <span className={`text-xs font-bold ${product.inStock ? 'text-[var(--success)]' : 'text-[var(--danger)]'}`}>
+            <span className={`text-xs font-bold text-right shrink-0 ${product.inStock ? 'text-[var(--success)]' : 'text-[var(--danger)]'}`}>
               {product.inStock ? t('product.inStockCount', { count: product.stockCount }) : t('product.outOfStockCount')}
             </span>
           </div>

@@ -72,7 +72,6 @@ export const ProductCard = memo(function ProductCard({ product, added = false, o
       io.disconnect()
     }
   }, [prefetchDetail])
-  const imageClassName = 'w-full ' + (compact ? 'aspect-[4/3]' : 'aspect-square') + ' object-cover transition duration-700 group-hover:scale-[1.06]'
   const stockClassName = 'rounded-full px-2.5 py-1 text-[11px] font-black ' + (product.inStock ? 'bg-success text-[var(--btn-success-text)]' : 'bg-[var(--navy-deep)] text-white')
   const buttonClassName = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-4 py-3 text-xs font-black uppercase tracking-[0.08em] transition ' + (
     !product.inStock
@@ -85,15 +84,21 @@ export const ProductCard = memo(function ProductCard({ product, added = false, o
   return (
     <article ref={cardRef} className="group card relative flex h-full flex-col overflow-hidden" onMouseEnter={prefetchDetail}>
       <Link to={'/product/' + product.id} className="relative block overflow-hidden bg-[var(--surface-raised)] no-underline">
-        <OptimizedImage
-          src={getProductImageUrl(product.filename)}
-          alt={product.name}
-          className={imageClassName}
-          width={420}
-          height={compact ? 315 : 420}
-          loading="lazy"
-          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-        />
+        {/* object-contain on a padded stage: product photos keep their full
+            shape (nameplates, IMPA codes stay readable) instead of being
+            cropped by object-cover. transformWidth caps uploads at 600px. */}
+        <div className={"w-full flex items-center justify-center p-3 " + (compact ? "aspect-[4/3]" : "aspect-square")}>
+          <OptimizedImage
+            src={getProductImageUrl(product.filename, 0)}
+            alt={product.name}
+            className={"h-full w-full object-contain transition duration-700 group-hover:scale-[1.06]"}
+            width={420}
+            height={compact ? 315 : 420}
+            transformWidth={600}
+            loading="lazy"
+            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+          />
+        </div>
         <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-[var(--overlay-dark)] to-transparent opacity-80" />
 
         <div className="absolute left-3 top-3 flex flex-wrap gap-2">

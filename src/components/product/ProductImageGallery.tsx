@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef } from 'react'
-import { ZoomIn, Share2 } from 'lucide-react'
+import { useState, useCallback, useRef, useEffect } from 'react'
+import { ChevronLeft, ChevronRight, ZoomIn, Share2, ImageOff } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { OptimizedImage } from '../ui/OptimizedImage'
 import { getProductImageUrl, isLightColor } from '../../lib/utils'
@@ -9,11 +9,23 @@ interface ProductImageGalleryProps {
   product: Product
 }
 
+/**
+ * Full product gallery:
+ *  - Main stage renders the SELECTED image (previously only the first one was
+ *    ever shown, so uploaded extra photos were invisible) at the full width of
+ *    the detail column — the old `max-h-[450px]` clamp is gone.
+ *  - Thumbnail strip below the main image (one per uploaded photo, with the
+ *    active one highlighted) — standard e-commerce pattern.
+ *  - Prev/next arrows + keyboard ← → navigation.
+ *  - Desktop hover zoom, mobile pinch / double-tap zoom preserved.
+ *  - Graceful handling when a product has no images at all (placeholder icon).
+ */
 export function ProductImageGallery({ product }: ProductImageGalleryProps) {
   const { t } = useTranslation()
   const [showZoom, setShowZoom] = useState(false)
   const [zoomPos, setZoomPos] = useState({ x: 50, y: 50 })
   const [showShare, setShowShare] = useState(false)
+  const [failedCount, setFailedCount] = useState(0)
 
   // Touch zoom state
   const [touchScale, setTouchScale] = useState(1)
@@ -21,6 +33,35 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
   const lastTouchDistance = useRef<number | null>(null)
   const lastTapTime = useRef<number>(0)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  // ── Image list: fall back to the shared placeholder when empty ──
+  const images = product.images?.length
+    ? product.images
+    : [{ url: getProductImageUrl(product.filename, 1200), alt: product.name, label: undefined as string | undefined }]
+  const hasImages = product.images?.length > 0
+
+  const [activeIndex, setActiveIndex] = useState(0)
+  const active = images[Math.min(activeIndex, images.length - 1)]
+
+  const goPrev = useCallback(() => {
+    setTouchScale(1)
+    setActiveIndex((i) => (i - 1 + images.length) % images.length)
+  }, [images.length])
+
+  const goNext = useCallback(() => {
+    setTouchScale(1)
+    setActiveIndex((i) => (i + 1) % images.length)
+  }, [images.length])
+
+  // Keyboard navigation (← →) while the gallery is on screen
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') goPrev()
+      else if (e.key === 'ArrowRight') goNext()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [goPrev, goNext])
 
   // ── Desktop: mouse hover zoom ──
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -75,13 +116,10 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
   const handleDoubleTap = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
     const now = Date.now()
     if (now - lastTapTime.current < 300) {
-      // Double tap detected
       if (touchScale > 1) {
-        // Zoom out
         setTouchScale(1)
         setTouchOrigin({ x: 50, y: 50 })
       } else {
-        // Zoom in to tap position
         const rect = containerRef.current?.getBoundingClientRect()
         if (rect) {
           const x = ((e.touches[0]?.clientX ?? rect.left + rect.width / 2) - rect.left) / rect.width * 100
@@ -110,12 +148,13 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
   }
 
   const isZoomed = showZoom || touchScale > 1
+  const isMulti = images.length > 1
 
   return (
     <>
       <div
         ref={containerRef}
-        className="relative bg-[var(--secondary-bg)] border border-[var(--border)] p-4 rounded-2xl overflow-hidden group cursor-crosshair touch-none"
+        className="relative bg-[var(--secondary-bg)] border border-[var(--border)] p-3 sm:p-4 rounded-2xl overflow-hidden group cursor-crosshair touch-none"
         onMouseMove={handleMouseMove}
         onMouseEnter={() => setShowZoom(true)}
         onMouseLeave={() => setShowZoom(false)}
@@ -124,42 +163,73 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
         onTouchEnd={handleTouchEnd}
         onTouchCancel={handleTouchEnd}
       >
+        {/* ── Main stage: full column width, no max-h clamp ── */}
         <div
-          className="overflow-hidden rounded-xl bg-[var(--primary-bg)] aspect-square max-h-[450px] flex items-center justify-center relative"
+          className="relative overflow-hidden rounded-xl bg-[var(--primary-bg)] aspect-square w-full flex items-center justify-center"
           onTouchEnd={handleDoubleTap}
         >
-          <OptimizedImage
-            src={getProductImageUrl(product.filename, 1200)}
-            alt={product.name}
-            width={600}
-            height={600}
-            loading="eager"
-            fetchPriority="high"
-            sizes="(max-width: 768px) 100vw, 55vw"
-            className={`w-full h-full object-contain p-2 transition-transform duration-200 ${
-              showZoom ? 'scale-150' : touchScale > 1 ? '' : 'scale-100'
-            }`}
-            style={{
-              transform: showZoom
-                ? `scale(1.5)`
-                : touchScale > 1
-                ? `scale(${touchScale})`
-                : undefined,
-              transformOrigin: showZoom
-                ? `${zoomPos.x}% ${zoomPos.y}%`
-                : `${touchOrigin.x}% ${touchOrigin.y}%`,
-            }}
-          />
-          {/* Desktop zoom hint */}
-          <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-sm text-xs text-white px-2.5 py-1 rounded-full font-mono flex items-center gap-1.5 opacity-0 group-hover:opacity-80 transition-opacity max-sm:hidden">
-            <ZoomIn size={12} /> {t('product.hoverToZoom')}
-          </div>
-          {/* Mobile zoom hint — shows briefly on first touch */}
-          {touchScale <= 1 && (
-            <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-sm text-xs text-white px-2.5 py-1 rounded-full font-mono flex items-center gap-1.5 sm:hidden pointer-events-none">
-              <ZoomIn size={12} /> Pinch or double-tap to zoom
+          {hasImages && failedCount < images.length ? (
+            <OptimizedImage
+              key={active.url}
+              src={active.url}
+              alt={active.alt || product.name}
+              width={1200}
+              height={1200}
+              loading="eager"
+              fetchPriority="high"
+              sizes="(max-width: 1024px) 100vw, 55vw"
+              transformWidth={1200}
+              onError={() => setFailedCount((c) => c + 1)}
+              className={`w-full h-full object-contain transition-transform duration-200 ${
+                showZoom ? 'scale-150' : touchScale > 1 ? '' : 'scale-100'
+              }`}
+              style={{
+                transform: showZoom
+                  ? 'scale(1.5)'
+                  : touchScale > 1
+                  ? `scale(${touchScale})`
+                  : undefined,
+                transformOrigin: showZoom
+                  ? `${zoomPos.x}% ${zoomPos.y}%`
+                  : `${touchOrigin.x}% ${touchOrigin.y}%`,
+              }}
+            />
+          ) : (
+            <div className="flex flex-col items-center gap-2 text-[var(--text-muted)]" aria-hidden>
+              <ImageOff size={40} strokeWidth={1.5} />
+              <span className="text-xs font-mono uppercase tracking-wider">{t('product.noImage')}</span>
             </div>
           )}
+
+          {/* Prev / next arrows — only when there are multiple photos */}
+          {isMulti && hasImages && (
+            <>
+              <button
+                onClick={goPrev}
+                aria-label={t('product.prevImage')}
+                className="absolute left-3 top-1/2 -translate-y-1/2 z-10 w-9 h-9 rounded-full bg-[var(--surface)]/90 border border-[var(--border)] flex items-center justify-center shadow-sm hover:border-[var(--accent-primary)] transition-colors cursor-pointer"
+              >
+                <ChevronLeft size={18} className="text-[var(--text-primary)]" />
+              </button>
+              <button
+                onClick={goNext}
+                aria-label={t('product.nextImage')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 z-10 w-9 h-9 rounded-full bg-[var(--surface)]/90 border border-[var(--border)] flex items-center justify-center shadow-sm hover:border-[var(--accent-primary)] transition-colors cursor-pointer"
+              >
+                <ChevronRight size={18} className="text-[var(--text-primary)]" />
+              </button>
+              {/* Photo counter, e.g. 3 / 7 */}
+              <span className="absolute bottom-3 left-3 z-10 bg-black/60 backdrop-blur-sm text-white text-xs font-mono px-2.5 py-1 rounded-full">
+                {Math.min(activeIndex + 1, images.length)} / {images.length}
+              </span>
+            </>
+          )}
+
+          {/* Desktop zoom hint */}
+          <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-sm text-xs text-white px-2.5 py-1 rounded-full font-mono flex items-center gap-1.5 opacity-0 group-hover:opacity-80 transition-opacity max-sm:hidden pointer-events-none">
+            <ZoomIn size={12} /> {t('product.hoverToZoom')}
+          </div>
+
           {/* Zoom indicator when zoomed */}
           {isZoomed && (
             <button
@@ -168,11 +238,12 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
                 setTouchScale(1)
                 setTouchOrigin({ x: 50, y: 50 })
               }}
-              className="absolute top-3 right-3 z-10 bg-black/60 backdrop-blur-sm text-xs text-white px-2.5 py-1 rounded-full font-mono flex items-center gap-1.5"
+              className="absolute top-3 right-3 z-20 bg-black/60 backdrop-blur-sm text-xs text-white px-2.5 py-1 rounded-full font-mono flex items-center gap-1.5"
             >
               {Math.round(showZoom ? 150 : touchScale * 100)}% — tap to reset
             </button>
           )}
+
           {product.customLabel && (
             <span
               className="absolute top-3 left-3 z-10 px-3 py-1.5 text-xs font-extrabold uppercase tracking-wider rounded-lg shadow-lg"
@@ -184,12 +255,48 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
               {product.customLabel}
             </span>
           )}
+
           {!product.inStock && (
-            <div className="absolute inset-0 bg-black/40 flex items-center justify-center z-10">
+            <div className="absolute inset-0 bg-black/40 flex items-center justify-center z-10 pointer-events-none">
               <span className="text-white font-bold text-lg bg-black/70 px-6 py-3 rounded-xl">{t('product.outOfStock')}</span>
             </div>
           )}
         </div>
+
+        {/* ── Thumbnail strip ── */}
+        {isMulti && hasImages && (
+          <div className="mt-3 grid grid-cols-6 sm:grid-cols-7 gap-2" role="tablist" aria-label={t('product.ariaGalleryThumbs')}>
+            {images.map((img, idx) => (
+              <button
+                key={img.url + idx}
+                role="tab"
+                aria-selected={idx === activeIndex}
+                aria-label={`${t('product.ariaViewImage')} ${idx + 1}`}
+                onClick={() => {
+                  setActiveIndex(idx)
+                  setTouchScale(1)
+                }}
+                className={`relative aspect-square rounded-lg overflow-hidden border-2 bg-[var(--primary-bg)] transition-colors cursor-pointer p-0 ${
+                  idx === activeIndex
+                    ? 'border-[var(--accent-primary)]'
+                    : 'border-[var(--border)] hover:border-[var(--accent-gold)]'
+                }`}
+              >
+                <OptimizedImage
+                  src={img.url}
+                  alt=""
+                  width={120}
+                  height={120}
+                  loading="lazy"
+                  sizes="90px"
+                  transformWidth={200}
+                  className="w-full h-full object-contain"
+                />
+              </button>
+            ))}
+          </div>
+        )}
+
         <button
           onClick={handleShare}
           className="absolute top-6 right-6 z-10 bg-[var(--surface)] border border-[var(--border)] rounded-lg p-2 hover:border-[var(--accent-gold)] transition-colors"
