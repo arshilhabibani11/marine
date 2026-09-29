@@ -19,6 +19,7 @@
 import { writeFileSync } from 'fs'
 import { join } from 'path'
 import { getAllRoutes } from './prerender-routes.mjs'
+import { fetchPublishedProducts } from './fetch-products.mjs'
 
 const BASE_URL = 'https://alkatraders.co'
 const LOCALES = ['en', 'ar', 'es']
@@ -57,26 +58,55 @@ function buildHreflangLinks(localePath) {
   return links
 }
 
+/** ISO date (YYYY-MM-DD) for <lastmod>, or undefined when unknown. */
+function isoDate(value) {
+  if (!value) return undefined
+  const d = new Date(value)
+  return Number.isNaN(d.getTime()) ? undefined : d.toISOString().slice(0, 10)
+}
+
 function buildUrlEntry(route) {
   const loc = route.path === '/en' ? BASE_URL : `${BASE_URL}${route.path}`
   const hreflangLines = buildHreflangLinks(route.path)
   const changefreq = route.changefreq || 'monthly'
   const priority = route.priority || 0.5
+  // lastmod only when meaningful content actually changed (product updatedAt).
+  const lastmod = route.lastmod
+    ? `\n      <lastmod>${route.lastmod}</lastmod>`
+    : ''
 
   return [
     '    <url>',
     `      <loc>${loc}</loc>`,
     ...hreflangLines,
+    lastmod,
     `      <changefreq>${changefreq}</changefreq>`,
     `      <priority>${priority.toFixed(1)}</priority>`,
     '    </url>',
   ].join('\n')
 }
 
-function main() {
+async function main() {
   console.log('\n🔍 Generating sitemap.xml...\n')
 
   const routes = getAllRoutes()
+
+  // Product URLs: one <url> per product per locale, with lastmod from the
+  // product's actual updatedAt (never a fabricated date). If the API is
+  // unreachable, the sitemap still ships — with static pages only.
+  const products = await fetchPublishedProducts()
+  console.log(`  📦 Fetched ${products.length} published products from the API`)
+  for (const p of products) {
+    for (const locale of LOCALES) {
+      routes.push({
+        path: `/${locale}/product/${p.id}`,
+        priority: 0.8,
+        changefreq: 'weekly',
+        lastmod: isoDate(p.updatedAt),
+      })
+    }
+  }
+
   const urlEntries = routes.map(buildUrlEntry)
 
   const sitemap = [
@@ -102,4 +132,4 @@ function main() {
   console.log(`     Sitemap size: ${(Buffer.byteLength(sitemap) / 1024).toFixed(1)} KB\n`)
 }
 
-main()
+await main()

@@ -31,6 +31,11 @@ function escapeXml(str: string): string {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;')
 }
 
+/** Product image URLs are absolute Cloudinary links — only prefix site-relative ones. */
+function absoluteUrl(url: string): string {
+  return /^https?:\/\//i.test(url) ? url : `${BASE_URL}${url}`
+}
+
 async function buildSitemap(): Promise<string> {
   const [products, categories, brands] = await Promise.all([
     prisma.product.findMany({
@@ -55,7 +60,7 @@ ${products.map((product) => `  <url>
     <loc>${BASE_URL}/product/${escapeXml(product.id)}</loc>
     <lastmod>${product.updatedAt.toISOString().split('T')[0]}</lastmod>
     <changefreq>weekly</changefreq>
-    <priority>0.8</priority>${product.images[0] ? `\n    <image:image>\n      <image:loc>${BASE_URL}${escapeXml(product.images[0].url)}</image:loc>\n      <image:title>${escapeXml(product.slug)}</image:title>\n    </image:image>` : ''}
+    <priority>0.8</priority>${product.images[0]?.url ? `\n    <image:image>\n      <image:loc>${escapeXml(absoluteUrl(product.images[0].url))}</image:loc>\n    </image:image>` : ''}
   </url>`).join('\n')}
 ${categories.map((cat) => `  <url>
     <loc>${BASE_URL}/products?category=${escapeXml(cat.slug)}</loc>

@@ -123,6 +123,7 @@ import storefrontSearchRoutes from './routes/storefront/search.js'
 import storefrontSettingsRoutes from './routes/storefront/settings.js'
 import storefrontPaymentRoutes from './routes/storefront/payments.js'
 import storefrontSitemapRoutes from './routes/storefront/sitemap.js'
+import storefrontMerchantFeedRoutes from './routes/storefront/merchantFeed.js'
 
 import customerAuthRoutes from './routes/storefront/auth.js'
 import paypalWebhookRoutes from './routes/webhooks/paypal.js'
@@ -369,6 +370,7 @@ for (const prefix of API_PREFIXES) {
   app.use(`${prefix}/storefront/settings`, publicLimiter, storefrontSettingsRoutes)
   app.use(`${prefix}/storefront/payments`, publicLimiter, storefrontPaymentRoutes)
   app.use(`${prefix}/sitemap.xml`, publicLimiter, storefrontSitemapRoutes)
+  app.use(`${prefix}/storefront/merchant-feed.xml`, publicLimiter, storefrontMerchantFeedRoutes)
 
   app.use(`${prefix}/auth/login`, loginLimiter)
   app.use(`${prefix}/auth/register`, registerLimiter)

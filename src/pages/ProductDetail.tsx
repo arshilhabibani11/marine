@@ -19,19 +19,12 @@ import { useStoreSettings } from '../hooks/useStoreSettings'
 import { SEO } from '../components/seo/SEO'
 import { BreadcrumbJsonLd } from '../components/seo/BreadcrumbJsonLd'
 import { useProductDetail } from '../hooks/useApiQuery'
-import { getProductImageUrl } from '../lib/utils'
 import { parseDescription, buildSpecTable, sectionTitle } from '../lib/description'
+import { buildProductSeo } from '../lib/seo/productSeo'
 import { ProductImageGallery } from '../components/product/ProductImageGallery'
 import { OfferModal } from '../components/product/OfferModal'
 import { Skeleton } from '../components/ui/Skeleton'
 import { RelatedProducts } from '../components/product/RelatedProducts'
-import type { Product } from '../types'
-
-function getSchemaCondition(condition: Product['condition']) {
-  if (condition === 'new' || condition === 'unused') return 'https://schema.org/NewCondition'
-  if (condition === 'refurbished' || condition === 'reconditioned') return 'https://schema.org/RefurbishedCondition'
-  return 'https://schema.org/UsedCondition'
-}
 
 export default function ProductDetail() {
   const { t } = useTranslation()
@@ -144,8 +137,27 @@ export default function ProductDetail() {
     : { Brand: product.brand, Category: readableCategory, Condition: product.condition }
   const hasDescriptionContent =
     parsedDesc.paragraphs.length > 0 || parsedDesc.features.length > 0 || parsedDesc.sections.length > 0
-  const productSeoTitle = `${product.name} | ${product.brand} ${readableCategory} spare`
-  const productSeoDescription = `${product.name} (${product.sku}) by ${product.brand}. ${product.condition} ${readableCategory} for marine spare parts, ship spares, industrial MRO, and export supply from Bhavnagar, India.`
+  // ── SEO generation — deterministic, fact-grounded ──
+  // Titles/meta/JSON-LD derive from real product identity (structured fields +
+  // Item Specifics parsed from the admin description). No fabricated attributes:
+  // unknown values are omitted, IMPA is additionalProperty (never GTIN), and the
+  // brand is asserted only when a real manufacturer/brand is known.
+  const productSeo = buildProductSeo({
+    id: product.id,
+    name: product.name,
+    sku: product.sku,
+    brand: product.brand,
+    category: product.category,
+    condition: product.condition,
+    description: product.description,
+    price: product.price,
+    onSale: product.onSale,
+    salePrice: product.salePrice,
+    inStock: product.inStock,
+    stockCount: product.stockCount,
+    images: (product.images || []).map((img) => ({ url: img.url, alt: img.alt })),
+    makeOffer: product.makeOffer,
+  })
 
   const handleAddToCart = () => {
     if (!product.inStock) return
@@ -162,34 +174,20 @@ export default function ProductDetail() {
   return (
     <div className="py-8">
       <SEO
-        title={productSeoTitle}
-        description={productSeoDescription.slice(0, 158)}
+        title={productSeo.title}
+        description={productSeo.metaDescription}
         canonical={`/product/${id}`}
-        ogImage={product ? getProductImageUrl(product.filename, 0) : undefined}
+        ogImage={productSeo.ogImage}
         ogType="product"
-        productPrice={effectivePrice}
-        productCurrency="USD"
-        productAvailability={product.inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock'}
-        productSku={product.sku}
-        productBrand={product.brand}
-        productCategory={readableCategory}
-        productCondition={getSchemaCondition(product.condition)}
-        ogImageAlt={product.name}
-        jsonLd={[
-          {
-            '@context': 'https://schema.org',
-            '@type': 'WebPage',
-            name: productSeoTitle,
-            description: productSeoDescription,
-            mainEntity: {
-              '@type': 'Product',
-              name: product.name,
-              sku: product.sku,
-              category: readableCategory,
-              brand: { '@type': 'Brand', name: product.brand },
-            },
-          },
-        ]}
+        productPrice={productSeo.productPrice}
+        productCurrency={productSeo.productCurrency}
+        productAvailability={productSeo.productAvailability}
+        productSku={productSeo.productSku}
+        productBrand={productSeo.productBrand}
+        productCategory={productSeo.productCategory}
+        productCondition={productSeo.productCondition}
+        ogImageAlt={productSeo.ogImageAlt}
+        jsonLd={productSeo.jsonLd}
       />
       <BreadcrumbJsonLd items={[
         { name: 'Home', url: '/' },

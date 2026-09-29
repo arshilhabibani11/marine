@@ -14,6 +14,9 @@
     "start": "node server.js",
     "typecheck": "node ./node_modules/typescript/bin/tsc -b --noEmit",
     "lint": "node ./node_modules/eslint/bin/eslint.js .",
+    "seo:audit": "node scripts/seo-audit.mjs",
+    "seo:prerender": "node scripts/prerender.mjs --dist frontend/dist",
+    "seo:sitemap": "node scripts/generate-sitemap.mjs --dist frontend/dist",
     "preview": "node ./node_modules/vite/bin/vite.js preview",
     "test:e2e": "npx playwright test",
     "test:e2e:ui": "npx playwright test --ui"

@@ -81,7 +81,16 @@ export function SEO({
     : isLocalePrefixed
       ? `${BASE_URL}/${language}${pathWithoutLocale === '/' && segments.length <= 1 ? '' : pathWithoutLocale}`
       : BASE_URL
-  const ogImageUrl = ogImage ? `${BASE_URL}${ogImage}` : DEFAULT_OG_IMAGE
+  // ogImage may be an absolute URL (Cloudinary product images arrive via
+  // getProductImageUrl). Only prefix site-relative paths — prepending BASE_URL
+  // to an absolute URL produced
+  // https://alkatraders.co/https://res.cloudinary.com/... which broke og:image
+  // AND the Product JSON-LD image on every product page.
+  const ogImageUrl = ogImage
+    ? /^https?:\/\//i.test(ogImage)
+      ? ogImage
+      : `${BASE_URL}${ogImage}`
+    : DEFAULT_OG_IMAGE
   const ogLocale = LOCALE_TO_OG[language] || 'en_US'
   const hreflangLinks = buildHreflangLinks(language, pathWithoutLocale)
 
@@ -93,8 +102,9 @@ export function SEO({
     url: BASE_URL,
     logo: DEFAULT_OG_IMAGE,
     description: 'Alka Traders is a globally connected marine and industrial equipment supplier. We supply OEM spares, surplus machinery, electrical automation components, hydraulic systems, and emergency procurement parts for the maritime and industrial sectors worldwide.',
-    foundingDate: '2000',
-    numberOfEmployees: '50-100',
+    // NOTE: no foundingDate / numberOfEmployees — the About page says "since
+    // 1990" while an earlier schema claimed 2000; unverifiable facts are
+    // omitted rather than guessed.
     address: {
       '@type': 'PostalAddress',
       streetAddress: 'PLOT - 7 ALANG HOUSE, MOTITALAV ROAD, KHUMBHARWADA',
@@ -158,10 +168,11 @@ export function SEO({
         ...(productSku ? { sku: productSku } : {}),
         ...(productCategory ? { category: productCategory } : {}),
         image: ogImageUrl,
-        brand: {
-          '@type': 'Brand',
-          name: productBrand || 'Alka Traders',
-        },
+        // Brand only when the real manufacturer/brand is known — "Alka Traders"
+        // is the SELLER, not the manufacturer, and must not be asserted as brand.
+        ...(productBrand ? { brand: { '@type': 'Brand', name: productBrand } } : {}),
+        // itemCondition only when known — never fall back to UsedCondition for
+        // products whose condition is new.
         ...(productCondition ? { itemCondition: productCondition } : {}),
         offers: {
           '@type': 'Offer',
@@ -169,12 +180,11 @@ export function SEO({
           priceCurrency: productCurrency,
           price: productPrice,
           availability: productAvailability || 'https://schema.org/InStock',
-          itemCondition: productCondition || 'https://schema.org/UsedCondition',
-          priceValidUntil: '2027-12-31',
           seller: {
             '@type': 'Organization',
             name: 'Alka Traders',
           },
+          // Matches the visible "Free 30-Day Returns" product-page badge.
           hasMerchantReturnPolicy: {
             '@type': 'MerchantReturnPolicy',
             applicableCountry: 'IN',
@@ -183,18 +193,9 @@ export function SEO({
             returnMethod: 'https://schema.org/ReturnByMail',
             returnFees: 'https://schema.org/FreeReturn',
           },
-          shippingDetails: {
-            '@type': 'OfferShippingDetails',
-            shippingDestination: {
-              '@type': 'DefinedRegion',
-              addressCountry: ['IN', 'AE', 'SG', 'NL', 'US', 'GB'],
-            },
-            shippingRate: {
-              '@type': 'MonetaryAmount',
-              value: 0,
-              currency: productCurrency,
-            },
-          },
+          // NOTE: no OfferShippingDetails — the old block hard-coded free
+          // shipping to 6 invented destination countries. Reintroduce only
+          // from the real shipping-zone configuration.
         },
       }
     : null

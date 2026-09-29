@@ -98,24 +98,26 @@ const STATIC_ROUTES = [
 ]
 
 /**
- * Build the full list of prerendered routes across all locales.
- *
+ * Build the list of STATIC prerendered routes (no product data needed).
  * @returns {Array<{ path: string, title: string, description: string, locale: string }>}
  */
-export function getAllRoutes() {
+export function getStaticRoutes() {
   const routes = []
-
   for (const locale of LOCALES) {
     for (const route of STATIC_ROUTES) {
       const path = route.slug ? `/${locale}/${route.slug}` : `/${locale}`
-      routes.push({
-        path,
-        title: route.title,
-        description: route.description,
-        locale,
-      })
+      routes.push({ path, title: route.title, description: route.description, locale })
     }
   }
-
   return routes
+}
+
+/**
+ * Build the full list of prerendered routes across all locales.
+ * @returns {Array<{ path: string, title: string, description: string, locale: string }>}
+ */
+export function getAllRoutes() {
+  // Static routes only — product pages are prerendered separately by
+  // prerender.mjs using REAL data fetched from the API (see fetch-products.mjs).
+  return getStaticRoutes()
 }

@@ -1,0 +1,273 @@
+/**
+ * Product SEO generation — deterministic, fact-grounded.
+ *
+ * Every value consumed here comes from real product data: the structured
+ * fields (brand, sku, condition) and the admin description parsed by
+ * src/lib/description.ts (Item Specifics like Manufacturer / Model / IMPA
+ * Code / Size / Material). Nothing is invented:
+ *   - No fabricated prices or priceValidUntil dates
+ *   - No guessed GTINs (IMPA is NEVER placed in gtin — it is an additionalProperty)
+ *   - No brand fallback to "Alka Traders" (we are the seller, not the maker)
+ *   - Unknown attributes are omitted, not padded with "N/A"
+ */
+
+import { parseDescription } from '../description'
+
+export interface ProductSeoInput {
+  id: string
+  name: string
+  sku: string
+  brand: string
+  category: string
+  condition: string
+  description?: string
+  price: number
+  onSale?: boolean
+  salePrice?: number
+  inStock: boolean
+  stockCount: number
+  images?: Array<{ url: string; alt?: string }>
+  makeOffer?: boolean
+}
+
+export interface ProductSeoResult {
+  /** Page title WITHOUT the "| Alka Traders" suffix (SEO.tsx appends it). */
+  title: string
+  metaDescription: string
+  h1: string
+  ogType: 'product'
+  productBrand?: string
+  productCondition?: string
+  productSku: string
+  productCategory: string
+  productPrice: number
+  productCurrency: string
+  productAvailability: string
+  ogImage?: string
+  ogImageAlt: string
+  jsonLd: Record<string, unknown>[]
+}
+
+/** Clean up a raw supplier-style value for display: collapse whitespace. */
+function tidy(v: string): string {
+  return v.replace(/\s+/g, ' ').trim()
+}
+
+/** Title-case a product type like "marine scupper plug" → "Marine Scupper Plug". */
+function titleCase(v: string): string {
+  return tidy(v)
+    .split(' ')
+    .map((w) => (w.length > 2 ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+    .join(' ')
+}
+
+/** True for values that are real content, not placeholder junk. */
+function isUsable(v: string | undefined | null): v is string {
+  if (!v) return false
+  const s = tidy(v)
+  if (!s) return false
+  if (/^(n\/?a|tbd|unknown|none|not available|-+)$/i.test(s)) return false
+  return true
+}
+
+/**
+ * Extract the product type from the product name. Real catalog names are
+ * supplier-style: "TERYair 23-24-83 PB SCUPPER PLUG 60MM MARINE BRASS RUBBER
+ * IMPA 232483 NEW". The product type is the leading noun phrase before the
+ * first size/identifier token. Falls back to the category slug (readable).
+ */
+export function extractProductType(name: string, category: string): string {
+  const n = tidy(name)
+  // Strip trailing condition/availability words
+  const stripped = n.replace(/\b(new|unused|used|refurbished|reconditioned|genuine|original)\b/gi, ' ').replace(/\s+/g, ' ').trim()
+  // Strip identifier tokens (IMPA codes, model numbers, sizes) and take what's left
+  const withoutIdentifiers = stripped
+    .replace(/\bimpa\s*:?\s*[\d\s-]+/gi, ' ')
+    .replace(/\b\d{2}(\.\d+)?\s*(mm|cm|in|inch|inch|")\b/gi, ' ')
+    .replace(/\b[\d]{2,}[-\s][\d]{2,}(?:[-\s][\d]{2,})*[a-z]{0,2}\b/gi, ' ') // model numbers 23-24-83 PB
+    .replace(/\b[a-z]\d{2,}[a-z]?\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  // The longest remaining multi-word sequence is the type ("SCUPPER PLUG")
+  const words = withoutIdentifiers.split(' ').filter((w) => w.length > 1)
+  // Prefer the LAST 1-3 words before the first size token — in supplier names
+  // the type noun usually follows the brand/model ("... PB SCUPPER PLUG 60MM")
+  const typeMatch = stripped.match(/\b((?:marine|industrial|hydraulic|pneumatic|electric|electrical|deck|engine|ship|vessel)\s+)?[a-z]{3,}(\s+(plug|pump|valve|motor|sensor|switch|gauge|filter|separator|plate|fitting|coupling|bearing|seal|gasket|controller|drive|starter|relay|breaker|transformer|cable|hose|pipe|strainer|regulator|actuator|compressor|winch|windlass|anchor|chain|shackle|block|hook|lamp|light|panel|meter|monitor|camera|antenna|horn|bell|whistle))\b/i)
+  if (typeMatch) return titleCase(typeMatch[0])
+  if (words.length >= 1 && words.join(' ').length <= 40) return titleCase(words.join(' '))
+  return titleCase(category.replace(/-/g, ' '))
+}
+
+interface Identity {
+  model?: string
+  mpn?: string
+  impa?: string
+  manufacturer?: string
+  size?: string
+  material?: string
+}
+
+/**
+ * Pull verified identity fields from the parsed Item Specifics. Only values
+ * the admin actually entered are returned — no defaults, no guesses.
+ */
+export function extractIdentity(_name: string, description?: string): Identity {
+  const parsed = parseDescription(description || '')
+  const specs = new Map(parsed.itemSpecs.map((s) => [s.label.toLowerCase(), s.value]))
+
+  const pick = (...keys: string[]): string | undefined => {
+    for (const k of keys) {
+      const v = specs.get(k)
+      if (isUsable(v)) return tidy(v)
+    }
+    return undefined
+  }
+
+  return {
+    model: pick('model', 'model number', 'model no', 'manufacturer model'),
+    mpn: pick('mpn', 'manufacturer part number', 'part number'),
+    impa: pick('impa code', 'impa', 'impa no'),
+    manufacturer: pick('manufacturer', 'maker', 'brand'),
+    size: pick('size', 'nominal size'),
+    material: pick('material', 'body material'),
+  }
+}
+
+/**
+ * Build the SEO title: [Brand] [Model] [Type] | [IMPA/MPN]
+ * Cap ~65 chars visible; identifiers win over descriptors when space is short.
+ */
+export function buildProductTitle(input: ProductSeoInput, identity: Identity, productType: string): string {
+  const brand = isUsable(input.brand) && input.brand !== 'Unknown' ? tidy(input.brand) : undefined
+  const model = identity.model || identity.mpn
+  const impa = identity.impa ? `IMPA ${identity.impa.replace(/\s+/g, '')}` : undefined
+
+  const left = [brand, model, productType].filter(Boolean).join(' ')
+  // Prefer the identifier tail when it fits; drop the tail when the left side
+  // is already long, so the title never becomes a stuffed keyword chain.
+  const withTail = impa && left.length + 3 + impa.length <= 70 ? `${left} | ${impa}` : left
+  return tidy(withTail || productType).slice(0, 70)
+}
+
+/**
+ * Meta description: one or two factual sentences — identity, key verified
+ * attribute, procurement CTA. No superlatives, no stuffing.
+ */
+export function buildMetaDescription(input: ProductSeoInput, identity: Identity, productType: string): string {
+  const brand = isUsable(input.brand) && input.brand !== 'Unknown' ? input.brand : undefined
+  const parts: string[] = []
+  const who = [brand, identity.model].filter(Boolean).join(' ')
+  parts.push(who ? `${who} ${productType.toLowerCase()} supplied by Alka Traders` : `${productType} (${input.sku}) supplied by Alka Traders`)
+  if (identity.impa) parts.push(`IMPA ${identity.impa.replace(/\s+/g, '')}`)
+  if (identity.size) parts.push(`${identity.size}`)
+  if (identity.material) parts.push(identity.material.toLowerCase())
+  if (input.makeOffer) parts.push('offer pricing available')
+  parts.push(input.inStock ? 'in stock for export dispatch' : 'check availability with our procurement team')
+  const desc = `${parts.join(', ')}.`
+  return desc.replace(/,\s*\./, '.').slice(0, 158)
+}
+
+/** H1 mirrors the title without the identifier tail. */
+export function buildH1(input: ProductSeoInput, identity: Identity, productType: string): string {
+  const brand = isUsable(input.brand) && input.brand !== 'Unknown' ? tidy(input.brand) : undefined
+  const model = identity.model || identity.mpn
+  return tidy([brand, model, productType].filter(Boolean).join(' ')) || tidy(input.name).slice(0, 80)
+}
+
+/** Build the full SEO payload for a product. */
+export function buildProductSeo(input: ProductSeoInput): ProductSeoResult {
+  const identity = extractIdentity(input.name, input.description)
+  const productType = extractProductType(input.name, input.category)
+  const title = buildProductTitle(input, identity, productType)
+  const metaDescription = buildMetaDescription(input, identity, productType)
+  const h1 = buildH1(input, identity, productType)
+
+  const effectivePrice = input.onSale && input.salePrice ? input.salePrice : input.price
+  const mainImage = input.images?.[0]?.url
+  const ogImageAlt = `${h1}${identity.size ? ` — ${identity.size}` : ''}`
+
+  const jsonLd: Record<string, unknown>[] = []
+
+  // Schema description: clean prose from the parsed description (never the raw
+  // supplier blob with "KEY FEATURES"/"ITEM SPECIFICS" headers in it).
+  // ALL-CAPS fragments under ~60 chars are editor residue ("ITEM SPECIFICS
+  // UPDATED AND FINAL"), not prose — reject them rather than ship junk to Google.
+  const looksLikeHeaderResidue = (s: string) =>
+    s.length <= 60 && s === s.toUpperCase() && /[A-Z]/.test(s)
+  const parsed = parseDescription(input.description || '')
+  const proseParas = parsed.paragraphs.filter((p) => isUsable(p) && !looksLikeHeaderResidue(p))
+  // When the top-level text is only editor residue, use genuine prose from
+  // parsed sections (e.g. Condition notes) before falling back to the name.
+  const sectionParas = parsed.sections
+    .flatMap((s) => s.paragraphs)
+    .filter((p) => isUsable(p) && !looksLikeHeaderResidue(p))
+    .slice(0, 2)
+  const cleanDesc = [...proseParas, ...sectionParas].join(' ')
+  const schemaDescription = (isUsable(cleanDesc) ? cleanDesc : tidy(input.name)).slice(0, 300)
+
+  // Product schema — real values only. IMPA as additionalProperty (never GTIN).
+  const product: Record<string, unknown> = {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: h1,
+    description: schemaDescription,
+    sku: input.sku,
+    ...(identity.mpn ? { mpn: identity.mpn } : {}),
+    ...(isUsable(input.brand) && input.brand !== 'Unknown' ? { brand: { '@type': 'Brand', name: tidy(input.brand) } } : {}),
+    ...(mainImage ? { image: [mainImage] } : {}),
+    ...(identity.impa
+      ? {
+          additionalProperty: [
+            {
+              '@type': 'PropertyValue',
+              name: 'IMPA Code',
+              value: identity.impa.replace(/\s+/g, ''),
+            },
+          ],
+        }
+      : {}),
+    offers: {
+      '@type': 'Offer',
+      // Canonical product URL — id-based route used by the SPA.
+      url: `https://alkatraders.co/en/product/${input.id}`,
+      priceCurrency: 'USD',
+      price: effectivePrice.toFixed(2),
+      availability: input.inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+      itemCondition: mapCondition(input.condition),
+      seller: { '@type': 'Organization', name: 'Alka Traders' },
+    },
+  }
+  jsonLd.push(product)
+
+  return {
+    title,
+    metaDescription,
+    h1,
+    ogType: 'product',
+    productBrand: isUsable(input.brand) && input.brand !== 'Unknown' ? input.brand : undefined,
+    productCondition: mapCondition(input.condition),
+    productSku: input.sku,
+    productCategory: input.category.replace(/-/g, ' '),
+    productPrice: effectivePrice,
+    productCurrency: 'USD',
+    productAvailability: input.inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+    ogImage: mainImage,
+    ogImageAlt,
+    jsonLd,
+  }
+}
+
+/** Map the internal condition enum to schema.org Offer itemCondition. */
+export function mapCondition(condition: string): string {
+  switch (condition) {
+    case 'new':
+    case 'unused':
+      return 'https://schema.org/NewCondition'
+    case 'refurbished':
+    case 'reconditioned':
+      return 'https://schema.org/RefurbishedCondition'
+    default:
+      return 'https://schema.org/UsedCondition'
+  }
+}

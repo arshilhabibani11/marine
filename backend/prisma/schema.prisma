@@ -113,6 +113,19 @@ model Product {
   includedItems      String[]  @default([]) @map("included_items")
   excludedItems      String[]  @default([]) @map("excluded_items")
   legacyId           String?   @map("legacy_id") @db.VarChar(50)
+  // ── Product identity (Phase 2 of the SEO architecture) ──
+  // Structured, verifiable identifiers. NULL = unknown (never guessed);
+  // the storefront omits unknown fields from titles/schema/feed.
+  manufacturer       String?   @db.VarChar(255)
+  modelNumber        String?   @map("model_number") @db.VarChar(100)
+  mpn                String?   @db.VarChar(100)
+  gtin               String?   @db.VarChar(50)
+  impaCode           String?   @map("impa_code") @db.VarChar(50)
+  // NOTE: no separate product-type column — the existing productType field is
+  // the physical/digital discriminator, and the catalog product type ("Scupper
+  // Plug") is derived from the name at render time.
+  sourceUrl          String?   @map("source_url") @db.Text
+  lastVerifiedAt     DateTime? @map("last_verified_at")
   createdBy          String?   @map("created_by") @db.Uuid
   updatedBy          String?   @map("updated_by") @db.Uuid
   createdAt          DateTime  @default(now()) @map("created_at")

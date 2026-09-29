@@ -56,6 +56,20 @@ const productSchema = z.object({
   warrantyNotes: z.string().optional().nullable(),
   includedItems: z.array(z.string()).optional(),
   excludedItems: z.array(z.string()).optional(),
+  // ── Product identity (SEO / Merchant Center truth model) ──
+  // All optional+nullable: NULL means "unknown", never guessed.
+  manufacturer: z.string().max(255).optional().nullable(),
+  modelNumber: z.string().max(100).optional().nullable(),
+  mpn: z.string().max(100).optional().nullable(),
+  // GTIN must be a real GS1 identifier (8/12/13/14 digits) or null — the
+  // Merchant feed emits it as gtin only when valid. IMPA codes are rejected here.
+  gtin: z.string().regex(/^\d{8}$|^\d{12,14}$/, 'GTIN must be 8 or 12-14 digits')
+    .optional()
+    .nullable()
+    .or(z.literal(''))
+    .transform((v) => (v === '' ? null : v)),
+  impaCode: z.string().max(50).optional().nullable(),
+  sourceUrl: z.string().optional().nullable(),
   industryIds: z.array(z.string().uuid()).optional(),
   specs: z.array(z.object({
     name: z.string(),
