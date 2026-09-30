@@ -125,9 +125,8 @@
       }
     </script>
 
-    <!-- Preconnect to critical origins -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Preconnect to critical origins. Fonts are self-hosted (/fonts/fonts.css,
+         roadmap D34), so no third-party font origins are needed. -->
     <link rel="preconnect" href="https://api.alkatraders.co" />
     <!-- Fire the product-detail API call now (only does anything on
          /product/<id> deep links) so it overlaps the JS download instead of
@@ -142,24 +141,13 @@
          products with no image) is intentionally NOT preloaded — it wasted a
          request and triggered "preloaded but not used" warnings on every page. -->
 
-    <!-- Critical font stylesheet: fetched at Highest priority but applied
-         without blocking first paint (previously a render-blocking CSS
-         @import in index.css that serialized an extra round trip).
-         display=swap means text paints in the fallback face immediately and
-         swaps once the webfonts arrive — an LCP win with zero layout shift
-         risk above the fold. -->
-    <link
-      rel="preload"
-      as="style"
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700;800;900&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
-      onload="this.onload=null;this.rel='stylesheet'"
-    />
-    <noscript>
-      <link
-        rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700;800;900&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
-      />
-    </noscript>
+    <!-- Self-hosted fonts (roadmap D34): one same-origin stylesheet + four
+         variable-font woff2 files (latin subset). No third-party request can
+         fail for any visitor — ad blockers and HTTPS-filtering antivirus no
+         longer matter — and @font-face font-display: swap keeps text painting
+         immediately in the fallback face. Same-origin + HTTP/2 makes the old
+         preload-as-style trick unnecessary. -->
+    <link rel="stylesheet" href="/fonts/fonts.css" />
 
 
   </head>
