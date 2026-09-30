@@ -7,6 +7,7 @@ import { notifyOrderEvent } from './adminNotifications.js'
 import { escapeHtml } from '../utils/html-escape.js'
 import logger from '../utils/logger.js'
 import { processPaypalRefund } from '../utils/paypal.js'
+import { decreaseStock, increaseStock } from './centralInventory.js'
 import { calcShippingCost, parseShippingZones } from '../utils/shipping.js'
 import { getStoreTimezone } from './settingsService.js'
 import type { AuthUser } from '../middleware/auth.js'
@@ -212,13 +213,10 @@ export async function updateOrderStatus(id: string, status: string, note: string
     let stockFailed = false
     for (const item of items) {
       if (item.productId) {
-        const affected = await prisma.$executeRawUnsafe(
-          'UPDATE products SET stock_count = stock_count - $1 WHERE id = $2::uuid AND stock_count >= $1',
-          item.quantity, item.productId
-        )
-        if (affected === 0) {
+        const res = await decreaseStock(item.productId, item.quantity, 'website', { orderId: id })
+        if (!res.ok) {
           stockFailed = true
-          logger.error({ productId: item.productId, quantity: item.quantity, orderId: id }, 'Stock decrement failed during admin order confirmation')
+          logger.error({ productId: item.productId, quantity: item.quantity, orderId: id, reason: res.reason }, 'Stock decrement failed during admin order confirmation')
         }
       }
     }
@@ -394,10 +392,7 @@ async function restoreStockAndRefund(id: string, order: any) {
   const items = await prisma.orderItem.findMany({ where: { orderId: id } })
   for (const item of items) {
     if (item.productId) {
-      await prisma.$executeRawUnsafe(
-        'UPDATE products SET stock_count = stock_count + $1 WHERE id = $2::uuid',
-        item.quantity, item.productId
-      )
+      await increaseStock(item.productId, item.quantity, 'admin', { orderId: id, note: 'cancellation restore' })
     }
   }
 

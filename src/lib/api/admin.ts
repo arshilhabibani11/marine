@@ -27,6 +27,17 @@ export interface DashboardActivityResponse {
 }
 
 export const admin = {
+  // eBay marketplace sync (central inventory mirrors)
+  ebay: {
+    inventory: (params?: Record<string, string>) => {
+      const qs = params ? '?' + new URLSearchParams(params).toString() : ''
+      return api.get<{ products: ApiProduct[]; pagination: Pagination }>(`/admin/ebay/inventory${qs}`, { auth: 'admin' })
+    },
+    syncNow: () => api.post<{ synced: number; failed: number; skipped: number; driftFound: number }>('/admin/ebay/inventory/sync-now', undefined, { auth: 'admin' }),
+    createListing: (data: { productId: string; categoryId: string; price?: number; marketplace?: string }) =>
+      api.post<{ listing: { id: string; status: string; ebayOfferId?: string; ebayListingId?: string } }>('/admin/ebay/listings', data, { auth: 'admin' }),
+  },
+
   // Dashboard
   dashboard: {
     stats: () => api.get<ApiDashboardStats>('/admin/dashboard/stats', { auth: 'admin' }),

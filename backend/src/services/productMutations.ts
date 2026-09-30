@@ -2,6 +2,7 @@ import { prisma } from '../server.js'
 import { generateSlug } from '../utils/helpers.js'
 import { productAdminInclude } from '../utils/prisma-helpers.js'
 import { logAudit } from '../utils/audit.js'
+import { setStock } from './centralInventory.js'
 import type { AuthUser } from '../middleware/auth.js'
 
 // ─── Helpers ──────────────────────────────────────────────────
@@ -145,10 +146,21 @@ export async function updateProduct(id: string, data: any, actor: AuthUser, ipAd
     }
   }
 
+  // Manual stock changes MUST go through the central inventory service
+  // (spec): the availability flag follows and eBay mirrors get re-synced.
+  const { stockCount: requestedStock, ...otherFields } = fields
   await prisma.product.update({
     where: { id },
-    data: { ...fields, updatedBy: actor.id },
+    data: { ...otherFields, updatedBy: actor.id },
   })
+  if (requestedStock !== undefined && requestedStock !== null && Number(requestedStock) !== existing.stockCount) {
+    const res = await setStock(id, Number(requestedStock), `product form update by ${actor.id}`)
+    if (!res.ok) {
+      throw Object.assign(new Error(
+        `Stock could not be set to ${requestedStock} (current: ${res.remaining}) — another sale may have claimed stock. Re-check and save again.`),
+        { status: 409 })
+    }
+  }
 
   const product = await prisma.product.findUnique({
     where: { id },

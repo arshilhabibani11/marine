@@ -93,16 +93,36 @@ Products with identity filled feed better titles, richer JSON-LD, and a stronger
 Merchant feed. Until then the feed falls back to description parsing — correct
 but less complete.
 
-### MT-5 · eBay developer account + credentials (before group C)
+### MT-5 · eBay developer account + credentials (code is READY — waiting on these keys)
 
-Required before any eBay integration work can hit the sandbox:
+The integration code is complete (central inventory service, webhook intake,
+idempotent order processing, quantity sync + reconciliation scheduler, admin
+view). To activate it:
+
 1. Register at the [eBay Developers Program](https://developer.ebay.com/).
-2. Create an application → note App ID / Cert ID / Dev ID.
-3. Add OAuth redirect URLs for the sandbox, then production.
-4. Join/verify the Seller Hub policies for the sell account.
-5. Decide notification endpoint strategy (we will expose a signed webhook route).
-Provide the credentials via Railway environment variables when ready
-(never in the repo).
+2. Create an application → copy the **App ID (Client ID)** and **Client Secret**.
+3. In Seller Hub: note your **merchant location key** and create (or note)
+   fulfillment / payment / return **business policy IDs**.
+4. Register the notification endpoint in the eBay Application Settings:
+   `https://api.alkatraders.co/api/webhooks/ebay` — eBay sends a challenge;
+   the backend answers it using `EBAY_VERIFICATION_TOKEN`.
+5. Set these Railway env vars on the **api** service (never in the repo):
+
+   | Variable | Value |
+   |---|---|
+   | `EBAY_ENV` | `sandbox` first, then `production` |
+   | `EBAY_CLIENT_ID` | App ID |
+   | `EBAY_CLIENT_SECRET` | Client Secret |
+   | `EBAY_VERIFICATION_TOKEN` | any long random string (also entered on eBay) |
+   | `EBAY_PUBLIC_ENDPOINT` | `https://api.alkatraders.co` |
+   | `EBAY_MERCHANT_LOCATION_KEY` | from Seller Hub |
+   | `EBAY_FULFILLMENT_POLICY_ID` / `EBAY_PAYMENT_POLICY_ID` / `EBAY_RETURN_POLICY_ID` | from Seller Hub |
+
+6. Then in the admin panel → **eBay Inventory** → list a product via
+   `POST /api/v1/admin/ebay/listings` (needs an eBay category id).
+
+Everything else keeps working while these are unset — the eBay scheduler idles
+and admin eBay endpoints return 503.
 
 ### MT-6 · Sentry (or similar) account + DSN (E41)
 

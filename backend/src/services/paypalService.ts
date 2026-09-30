@@ -5,6 +5,7 @@ import logger from '../utils/logger.js'
 import { getPaypalAccessToken, PAYPAL_BASE, PAYPAL_WEBHOOK_ID } from '../utils/paypal.js'
 import { paypalReturnUrl, paypalCancelUrl } from '../utils/paypalUrls.js'
 import { markOfferPaid } from './offerService.js'
+import { decreaseStock } from './centralInventory.js'
 import type { Prisma } from '@prisma/client'
 
 const hookLog = logger.child({ context: 'paypal-service' })
@@ -118,17 +119,15 @@ export async function handleCaptureCompleted(resource: Record<string, unknown>) 
       data: { orderId: order.id, status: 'confirmed', note: 'Payment confirmed via PayPal webhook' },
     })
 
-    // Reduce stock — atomic guard prevents negative stock
+    // Reduce stock through the CENTRAL inventory service — atomic guard
+    // prevents negative stock, availability flag follows, eBay mirrors enqueue.
     let stockFailed = false
     for (const item of order.items) {
       if (item.productId) {
-        const affected = await prisma.$executeRawUnsafe(
-          'UPDATE products SET stock_count = stock_count - $1 WHERE id = $2::uuid AND stock_count >= $1',
-          item.quantity, item.productId
-        )
-        if (affected === 0) {
+        const res = await decreaseStock(item.productId, item.quantity, 'paypal', { orderId: order.id })
+        if (!res.ok) {
           stockFailed = true
-          hookLog.error({ productId: item.productId, quantity: item.quantity, orderId: order.id }, 'Stock decrement failed during webhook capture')
+          hookLog.error({ productId: item.productId, quantity: item.quantity, orderId: order.id, reason: res.reason }, 'Stock decrement failed during webhook capture')
         }
       }
     }
@@ -318,17 +317,14 @@ export async function capturePaypalOrder(paypalOrderId: string, orderId: string,
 
   await prisma.orderTimeline.create({ data: { orderId, status: 'confirmed', note: 'Payment confirmed via PayPal' } })
 
-  // Reduce stock
+  // Reduce stock through the CENTRAL inventory service (atomic + eBay sync).
   let stockFailed = false
   for (const item of order.items) {
     if (item.productId) {
-      const affected = await prisma.$executeRawUnsafe(
-        'UPDATE products SET stock_count = stock_count - $1 WHERE id = $2::uuid AND stock_count >= $1',
-        item.quantity, item.productId
-      )
-      if (affected === 0) {
+      const res = await decreaseStock(item.productId, item.quantity, 'paypal', { orderId })
+      if (!res.ok) {
         stockFailed = true
-        hookLog.error({ productId: item.productId, quantity: item.quantity, orderId }, 'Stock decrement failed during PayPal capture')
+        hookLog.error({ productId: item.productId, quantity: item.quantity, orderId, reason: res.reason }, 'Stock decrement failed during PayPal capture')
       }
     }
   }

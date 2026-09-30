@@ -53,6 +53,7 @@ const AdminGuard = lazy(() => import('./components/admin/AdminGuard').then(m => 
 import { ErrorBoundary } from './components/admin/ErrorBoundary'
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'))
 const AdminProducts = lazy(() => import('./pages/admin/AdminProducts'))
+const AdminEbayInventory = lazy(() => import('./pages/admin/AdminEbayInventory'))
 const AdminMedia = lazy(() => import('./pages/admin/AdminMedia'))
 const AdminBrands = lazy(() => import('./pages/admin/AdminBrands'))
 const AdminIndustries = lazy(() => import('./pages/admin/AdminIndustries'))
@@ -227,6 +228,7 @@ function AppContent() {
       >
         <Route index element={<AdminDashboard />} />
         <Route path="products" element={<AdminProducts />} />
+        <Route path="ebay-inventory" element={<AdminEbayInventory />} />
         <Route path="media" element={<AdminMedia />} />
         <Route path="brands" element={<AdminBrands />} />
         <Route path="industries" element={<AdminIndustries />} />

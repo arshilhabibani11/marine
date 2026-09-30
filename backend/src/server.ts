@@ -102,6 +102,7 @@ import adminIndustryRoutes from './routes/admin/industries.js'
 import adminOrderRoutes from './routes/admin/orders.js'
 import adminRfqRoutes from './routes/admin/rfqs.js'
 import adminOfferRoutes from './routes/admin/offers.js'
+import adminEbayRoutes from './routes/admin/ebay.js'
 import adminCustomerRoutes from './routes/admin/customers.js'
 import adminMessageRoutes from './routes/admin/messages.js'
 import adminMediaRoutes from './routes/admin/media.js'
@@ -127,11 +128,13 @@ import storefrontMerchantFeedRoutes from './routes/storefront/merchantFeed.js'
 
 import customerAuthRoutes from './routes/storefront/auth.js'
 import paypalWebhookRoutes from './routes/webhooks/paypal.js'
+import ebayWebhookRoutes from './routes/webhooks/ebay.js'
 
 // ─── Email Queue Processor ────────────────────────────────────
 import { startEmailQueueProcessor, stopEmailQueueProcessor } from './services/email.js'
 import { startNotificationScheduler, stopNotificationScheduler } from './services/notificationScheduler.js'
 import { startOfferExpiryScheduler, stopOfferExpiryScheduler } from './services/offerExpiryScheduler.js'
+import { startEbaySyncScheduler, stopEbaySyncScheduler } from './services/ebaySyncScheduler.js'
 
 // ─── App Setup ─────────────────────────────────────────────────
 const app = express()
@@ -215,6 +218,7 @@ const adminLimiter = rateLimit({
 
 // ─── PayPal Webhook ────────────────────────────────────────────
 app.use('/api/webhooks/paypal', express.json({ limit: '10mb' }), paypalWebhookRoutes)
+app.use('/api/webhooks/ebay', express.json({ limit: '1mb' }), ebayWebhookRoutes)
 
 // ─── Body Parsing ──────────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }))
@@ -350,6 +354,7 @@ for (const prefix of API_PREFIXES) {
   app.use(`${prefix}/admin/orders`, adminLimiter, userAwareAdminLimiter, adminOrderRoutes)
   app.use(`${prefix}/admin/rfqs`, adminLimiter, userAwareAdminLimiter, adminRfqRoutes)
   app.use(`${prefix}/admin/offers`, adminLimiter, userAwareAdminLimiter, adminOfferRoutes)
+  app.use(`${prefix}/admin/ebay`, adminLimiter, userAwareAdminLimiter, adminEbayRoutes)
   app.use(`${prefix}/admin/customers`, adminLimiter, userAwareAdminLimiter, adminCustomerRoutes)
   app.use(`${prefix}/admin/messages`, adminLimiter, userAwareAdminLimiter, adminMessageRoutes)
   app.use(`${prefix}/admin/media`, adminLimiter, userAwareAdminLimiter, adminMediaRoutes)
@@ -400,6 +405,7 @@ async function shutdown(signal: string, exitCode: number) {
   stopEmailQueueProcessor()
   stopNotificationScheduler()
   stopOfferExpiryScheduler()
+  stopEbaySyncScheduler()
   httpServer?.close()
   await prisma.$disconnect().catch(() => {})
   process.exit(exitCode)
@@ -469,6 +475,7 @@ async function main() {
     startEmailQueueProcessor()
     startNotificationScheduler()
     startOfferExpiryScheduler()
+    startEbaySyncScheduler()
     startupLogger.info('APPLICATION_READY')
 
     // Heartbeat: an alive process prints every 30s, so an empty runtime log

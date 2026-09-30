@@ -137,6 +137,7 @@ model Product {
   images        ProductImage[]
   specs         ProductSpec[]
   industries    ProductIndustry[]
+  ebayListings  EbayListing[]
   orderItems    OrderItem[]
   offers        Offer[]
   createdByUser AdminUser?        @relation("CreatedProducts", fields: [createdBy], references: [id])
@@ -312,6 +313,7 @@ model Order {
   originalListedPrice Decimal?  @map("original_listed_price") @db.Decimal(12, 2)
   negotiatedPrice     Decimal?  @map("negotiated_price") @db.Decimal(12, 2)
   offer               Offer?    @relation("OfferOrder", fields: [offerId], references: [id], onDelete: SetNull)
+  ebayOrder           EbayOrder?
 
   @@index([customerId])
   @@index([status])
@@ -602,4 +604,61 @@ model WebhookLog {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@map("webhook_logs")
+}
+
+// ─── eBay Marketplace Integration (roadmap C) ──────────────────
+// Central inventory lives on products.stockCount; eBay rows are MIRRORS
+// (mapping + sync state), never a second source of truth.
+
+model EbayListing {
+  id             String   @id @default(uuid()) @db.Uuid
+  productId      String   @map("product_id") @db.Uuid
+  sku            String   @db.VarChar(100)
+  ebayOfferId    String?  @map("ebay_offer_id") @db.VarChar(50)
+  ebayListingId  String?  @map("ebay_listing_id") @db.VarChar(20)
+  marketplace    String   @default("EBAY_US") @db.VarChar(20)
+  status         String   @default("pending") @db.VarChar(30) // pending|published|sync-pending|synced|sync-failed|ended
+  lastSyncedQty  Int?     @map("last_synced_qty")
+  lastSyncAt     DateTime? @map("last_sync_at")
+  lastError      String?  @map("last_error") @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([sku, marketplace])
+  @@index([productId])
+  @@map("ebay_listings")
+}
+
+model EbayOrder {
+  id            String    @id @default(uuid()) @db.Uuid
+  ebayOrderId   String    @map("ebay_order_id") @db.VarChar(50)
+  orderId       String?   @unique @map("order_id") @db.Uuid // internal orders row, created on first sight (1:1)
+  status        String    @default("processing") @db.VarChar(30) // processing|processed|failed|ignored
+  totalAmount   Decimal?  @map("total_amount") @db.Decimal(12, 2)
+  currency      String?   @db.VarChar(10)
+  lastError     String?   @map("last_error") @db.Text
+  processedAt   DateTime? @map("processed_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  order Order? @relation(fields: [orderId], references: [id])
+
+  @@unique([ebayOrderId])
+  @@map("ebay_orders")
+}
+
+model EbayEventLog {
+  id           String    @id @default(uuid()) @db.Uuid
+  eventId      String    @unique @db.VarChar(100) // eBay notification id (idempotency)
+  topic        String    @db.VarChar(100)
+  payload      Json?     @db.JsonB
+  status       String    @default("received") @db.VarChar(20) // received|processed|duplicate|failed
+  error        String?   @db.Text
+  processedAt  DateTime? @map("processed_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@index([topic, createdAt])
+  @@map("ebay_event_log")
 }
