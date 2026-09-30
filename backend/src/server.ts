@@ -73,7 +73,8 @@ import cors from 'cors'
 import helmet from 'helmet'
 import compression from 'compression'
 import cookieParser from 'cookie-parser'
-import morgan from 'morgan'
+import { randomUUID } from 'crypto'
+import pinoHttp from 'pino-http'
 import { rateLimit } from 'express-rate-limit'
 import crypto from 'crypto'
 import { prisma, rawPrisma, describeDbDriver, getRedactedDbHost } from './utils/prismaClient.js'
@@ -241,7 +242,29 @@ app.use((req: express.Request, _res: express.Response, next: express.NextFunctio
 })
 
 // ─── Request Logging ──────────────────────────────────────────
-app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'))
+// Structured request logging via pino-http (roadmap E42): JSON lines that
+// interleave with the pino app logs, per-request ids for correlation, and
+// sensitive headers redacted through the shared logger config. Morgan was
+// removed — its unstructured text lines could not be correlated with
+// product/order/offer context logged by the services.
+app.use(
+  pinoHttp({
+    logger,
+    genReqId: () => randomUUID(),
+    autoLogging: {
+      ignore: (req) => req.url === '/health' || req.url === '/api/wake',
+    },
+    customLogLevel: (_req, res, err) => {
+      if (err || res.statusCode >= 500) return 'error'
+      if (res.statusCode >= 400) return 'warn'
+      return 'info'
+    },
+    serializers: {
+      req: (req) => ({ id: req.id, method: req.method, url: req.url }),
+      res: (res) => ({ statusCode: res.statusCode }),
+    },
+  }),
+)
 
 // ─── Health / Wake ──────────────────────────────────────────────
 // Both endpoints run a wake-aware `SELECT 1`: when the compute is asleep the
