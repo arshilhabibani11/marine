@@ -131,6 +131,29 @@ console.log(`${fontsOk ? '✅' : '✗'} Fonts active: SpaceGrotesk=${fonts.grote
 const thirdParty = failedRequests.filter((f) => /fonts\.(googleapis|gstatic)\.com/.test(f))
 console.log(`${thirdParty.length === 0 ? '✅' : '✗'} No fonts.googleapis/gstatic requests (self-hosted)`)
 
+// 8. Core Web Vitals (roadmap B21): LCP + CLS via PerformanceObserver.
+// INP is skipped — it requires real interaction and is best read from the
+// Chrome UX Report / Search Console CWV report in production.
+const cwv = await page.evaluate(() => new Promise((resolve) => {
+  const out = { lcp: null, cls: 0 }
+  try {
+    new PerformanceObserver((list) => {
+      const entries = list.getEntries()
+      if (entries.length > 0) out.lcp = Math.round(entries[entries.length - 1].startTime)
+    }).observe({ type: 'largest-contentful-paint', buffered: true })
+  } catch { /* not supported */ }
+  try {
+    new PerformanceObserver((list) => {
+      for (const e of list.getEntries()) if (!e.hadRecentInput) out.cls += e.value
+    }).observe({ type: 'layout-shift', buffered: true })
+  } catch { /* not supported */ }
+  setTimeout(() => resolve({ ...out, cls: Math.round(out.cls * 1000) / 1000 }), 1200)
+}))
+const lcpGood = cwv.lcp != null && cwv.lcp <= 2500
+const clsGood = cwv.cls <= 0.1
+console.log(`${lcpGood ? '✅' : '✗'} LCP: ${cwv.lcp ?? 'n/a'}ms (target ≤ 2500ms)`)
+console.log(`${clsGood ? '✅' : '✗'} CLS: ${cwv.cls} (target ≤ 0.1)`)
+
 // Screenshot for visual check (temp, not committed)
 await page.screenshot({ path: `${process.env.TEMP || '/tmp'}/mobile-product.png`, fullPage: false })
 console.log(`\n📸 Screenshot: ${process.env.TEMP || '/tmp'}/mobile-product.png`)
@@ -138,8 +161,11 @@ console.log(`\n📸 Screenshot: ${process.env.TEMP || '/tmp'}/mobile-product.png
 await browser.close()
 
 // CORS/mocked-API noise is not a site problem — exclude api.alkatraders.co
-// failures from the problem count when mocking.
+// failures from the problem count when mocking. LCP in this lab harness is
+// dominated by the remote CDN image download under emulation — treat it as a
+// regression signal, not an absolute number; field CWV (Search Console / CrUX)
+// is the authority.
 const siteFailures = failedRequests.filter((f) => !(MOCK_API && f.includes('api.alkatraders.co')))
-const problems = siteFailures.length + consoleErrors.filter((e) => !(MOCK_API && e.includes('api.alkatraders.co'))).length + (hasOverflow ? 1 : 0) + (mainImage && mainImage.renderedW < 250 ? 1 : 0) + (fontsOk ? 0 : 1)
-console.log(`\n${problems === 0 ? '✅ ALL CHECKS PASSED' : `✗ ${problems} problem(s) found`}`)
+const problems = siteFailures.length + consoleErrors.filter((e) => !(MOCK_API && e.includes('api.alkatraders.co'))).length + (hasOverflow ? 1 : 0) + (mainImage && mainImage.renderedW < 250 ? 1 : 0) + (fontsOk ? 0 : 1) + (clsGood ? 0 : 1) + (lcpGood ? 0 : 1)
+console.log(`\n${problems === 0 ? '✅ ALL CHECKS PASSED' : `✗ ${problems} problem(s) found (see ✓/✗ above; lab LCP is environment-sensitive)`}`)
 process.exit(problems === 0 ? 0 : 1)

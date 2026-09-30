@@ -19,6 +19,9 @@ interface SEOProps {
   productCondition?: string
   ogImageAlt?: string
   keywords?: string
+  /** Emit <meta name="robots" content="noindex, follow"> — used for search
+   *  results, junk filter combinations, and unavailable products (B18/B20). */
+  noindex?: boolean
   jsonLd?: Record<string, any>[]
 }
 
@@ -62,6 +65,7 @@ export function SEO({
   productCondition,
   ogImageAlt,
   keywords,
+  noindex,
   jsonLd,
 }: SEOProps) {
   const { pathname } = useLocation()
@@ -212,6 +216,7 @@ export function SEO({
       <meta name="description" content={description || DEFAULT_DESCRIPTION} />
       {keywords && <meta name="keywords" content={keywords} />}
       <link rel="canonical" href={canonicalUrl} />
+      {noindex && <meta name="robots" content="noindex, follow" />}
 
       {hreflangLinks.map(({ hreflang, href }) => (
         <link key={hreflang} rel="alternate" hrefLang={hreflang} href={href} />

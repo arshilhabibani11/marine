@@ -285,6 +285,20 @@ export default function Products() {
       : searchParams.get('search')
         ? `/products?search=${encodeURIComponent(searchParams.get('search') || '')}`
         : '/products'
+  // B18 faceted-navigation rule: a single facet (category OR brand OR search)
+  // keeps its own canonical (above); COMBINATIONS and paginated views are
+  // thin near-duplicates — noindex,follow so crawlers keep the canonical set
+  // tight. (Internal links remain followable; nothing is blocked in robots.)
+  const activeFacets = [
+    searchParams.get('category') ? 1 : 0,
+    searchParams.get('brand') ? 1 : 0,
+    searchParams.get('search') ? 1 : 0,
+    searchParams.get('industry') ? 1 : 0,
+    searchParams.get('priceMin') || searchParams.get('priceMax') ? 1 : 0,
+    searchParams.get('onSale') ? 1 : 0,
+    searchParams.get('urgency') ? 1 : 0,
+  ].reduce<number>((a, b) => a + b, 0)
+  const hasJunkFilters = activeFacets > 1 || currentPage > 1
   const productsSeoTitle = seoQueryLabel
     ? `${seoQueryLabel} marine spare parts and ship spares`
     : 'Marine spare parts catalog | ship spares, engine parts and industrial equipment'
@@ -314,7 +328,8 @@ export default function Products() {
         title={productsSeoTitle}
         description={productsSeoDescription.slice(0, 158)}
         canonical={canonicalQuery}
-        jsonLd={[productItemListJsonLd]}
+        noindex={hasJunkFilters}
+        jsonLd={hasJunkFilters ? [] : [productItemListJsonLd]}
       />
       <BreadcrumbJsonLd items={[{ name: 'Home', url: '/' }, { name: 'Products', url: '/products' }]} />
       {/* Header */}

@@ -108,7 +108,11 @@ export default function ProductDetail() {
   }
 
   if (!product) {
+    // B20: a missing/unpublished product must not look indexable — emit
+    // noindex so Google drops soft-404 shells instead of judging the page.
     return (
+      <>
+      <SEO title={t('product.productNotFound')} description={t('product.productNotFoundDesc')} noindex />
       <div className="max-w-[1280px] mx-auto px-4 sm:px-6 py-24 text-center">
         <h2 className="text-2xl font-bold mb-2">{t('product.productNotFound')}</h2>
         <p className="text-body-sm text-[var(--text-secondary)] mb-6">{t('product.productNotFoundDesc')}</p>
@@ -116,6 +120,7 @@ export default function ProductDetail() {
           <ArrowLeft size={16} /> {t('product.backToProducts')}
         </Link>
       </div>
+      </>
     )
   }
 

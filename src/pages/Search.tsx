@@ -127,6 +127,7 @@ export default function SearchPage() {
         title="Search — Marine & Industrial Equipment"
         description="Search Alka Traders' catalog of marine spares, industrial equipment, surplus machinery, and hard-to-find parts by name, SKU, brand, or category."
         canonical="/search"
+        noindex
       />
       <div className="max-w-[720px] mx-auto px-4 sm:px-6">
         <h1 className="font-display font-bold text-section-lg tracking-tight mb-2">{t('search.title')}</h1>
