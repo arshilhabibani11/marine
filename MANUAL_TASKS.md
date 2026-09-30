@@ -84,7 +84,7 @@ offer-payment migrations ran.
 
 ## 🟡 Pending later (tie to roadmap groups)
 
-### MT-4 · Enter product identity fields in admin (after B7 builds the form)
+### MT-4 · Enter product identity fields in admin (form ready: Admin → Products → edit → SEO tab → "Product Identity")
 
 For every product where documentation is at hand, fill in:
 `manufacturer`, `model number`, `MPN`, `GTIN` (only if a **verified GS1 GTIN**

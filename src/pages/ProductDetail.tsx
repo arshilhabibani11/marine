@@ -157,6 +157,11 @@ export default function ProductDetail() {
     stockCount: product.stockCount,
     images: (product.images || []).map((img) => ({ url: img.url, alt: img.alt })),
     makeOffer: product.makeOffer,
+    // Structured identity wins over description-parsed values
+    manufacturer: product.manufacturer,
+    modelNumber: product.modelNumber,
+    mpn: product.mpn,
+    impaCode: product.impaCode,
   })
 
   const handleAddToCart = () => {

@@ -59,6 +59,14 @@ export interface Product {
   dateAdded?: string
   makeOffer?: boolean
   seoKeywords?: string[]
+  // Structured, verified identity (admin-entered; NULL = unknown, never guessed).
+  manufacturer?: string | null
+  modelNumber?: string | null
+  mpn?: string | null
+  gtin?: string | null
+  impaCode?: string | null
+  sourceUrl?: string | null
+  lastVerifiedAt?: string | null
 }
 
 export interface Brand {

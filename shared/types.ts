@@ -73,6 +73,16 @@ export interface Product {
   seoKeywords?: string[]
   searchKeywords?: string[]
   internalNotes?: string
+  // ── Product identity (SEO / Merchant Center truth model) ──
+  // NULL/undefined = unknown, never guessed. Verified data feeds titles,
+  // JSON-LD, and the Merchant feed; unknown fields are simply omitted.
+  manufacturer?: string | null
+  modelNumber?: string | null
+  mpn?: string | null
+  gtin?: string | null
+  impaCode?: string | null
+  sourceUrl?: string | null
+  lastVerifiedAt?: string | null
   createdAt?: string | null
   updatedAt?: string | null
   // Relations

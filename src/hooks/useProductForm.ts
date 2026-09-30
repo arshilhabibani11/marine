@@ -43,6 +43,13 @@ export interface ProductFormData {
   seoTitle: string
   seoDescription: string
   searchKeywords: string
+  // Verified product identity — empty string means unknown (stored as NULL).
+  manufacturer: string
+  modelNumber: string
+  mpn: string
+  gtin: string
+  impaCode: string
+  sourceUrl: string
   internalNotes: string
   isNewArrival: boolean
   isFeatured: boolean
@@ -97,6 +104,12 @@ function getEmptyForm(): ProductFormData {
     seoTitle: '',
     seoDescription: '',
     searchKeywords: '',
+    manufacturer: '',
+    modelNumber: '',
+    mpn: '',
+    gtin: '',
+    impaCode: '',
+    sourceUrl: '',
     internalNotes: '',
     isNewArrival: false,
     isFeatured: false,
@@ -151,6 +164,12 @@ function getFormFromProduct(product: ApiProduct): ProductFormData {
     seoTitle: product.seoTitle || product.name || '',
     seoDescription: product.seoDescription || product.description?.slice(0, 160) || '',
     searchKeywords: (Array.isArray(product.seoKeywords) ? product.seoKeywords.join(', ') : (product.seoKeywords || product.searchKeywords || '')) as string,
+    manufacturer: product.manufacturer || '',
+    modelNumber: product.modelNumber || '',
+    mpn: product.mpn || '',
+    gtin: product.gtin || '',
+    impaCode: product.impaCode || '',
+    sourceUrl: product.sourceUrl || '',
     internalNotes: product.internalNotes || '',
     isNewArrival: product.isNewArrival ?? false,
     isFeatured: product.isFeatured ?? false,
@@ -277,7 +296,7 @@ export function useProductForm() {
     inventory: false,
     specs: false,
     details: false,
-    seo: false,
+    seo: !!(form.gtin && !/^(\d{8}|\d{12,14})$/.test(form.gtin)),
     notes: false,
   }
 
@@ -339,6 +358,11 @@ export function useProductForm() {
     if (form.makeOfferEnabled && form.minimumOfferPrice && Number(form.minimumOfferPrice) <= 0) {
       e.minimumOfferPrice = 'Minimum offer price must be greater than 0'
     }
+    // Identity truth rule: a GTIN must be a real GS1 barcode or left empty —
+    // IMPA codes and internal SKUs are the classic wrong values here.
+    if (form.gtin && !/^(\d{8}|\d{12,14})$/.test(form.gtin)) {
+      e.gtin = 'GTIN must be 8 or 12–14 digits (leave blank if unknown)'
+    }
     // Published products must belong to a category: storefront category
     // browsing and filters count by categoryId, so an uncategorized product
     // never appears under any category. Drafts/partials stay unrestricted.
@@ -347,7 +371,7 @@ export function useProductForm() {
       e.category = 'Select a category before publishing — uncategorized products cannot be found via category browsing'
     }
     return e
-  }, [form.salePrice, form.regularPrice, form.saleStartsAt, form.saleEndsAt, form.makeOfferEnabled, form.minimumOfferPrice, form.category, form.status])
+  }, [form.salePrice, form.regularPrice, form.saleStartsAt, form.saleEndsAt, form.makeOfferEnabled, form.minimumOfferPrice, form.category, form.status, form.gtin])
 
   const isValid = Object.keys(validate()).length === 0
 
@@ -487,6 +511,14 @@ export function useProductForm() {
         includedItems: form.includedItems.filter((i: string) => i.trim()),
         excludedItems: form.excludedItems.filter((i: string) => i.trim()),
         seoKeywords: form.searchKeywords ? form.searchKeywords.split(',').map(s => s.trim()).filter(Boolean) : [],
+        // Identity fields: empty → null so unknown stays unknown in the DB
+        // (never guessed, never fabricated for the Merchant feed or schema).
+        manufacturer: form.manufacturer.trim() || null,
+        modelNumber: form.modelNumber.trim() || null,
+        mpn: form.mpn.trim() || null,
+        gtin: form.gtin.replace(/\s+/g, '') || null,
+        impaCode: form.impaCode.trim() || null,
+        sourceUrl: form.sourceUrl.trim() || null,
         showPrice: (Number(form.regularPrice) || 0) > 0,
         internalNotes: form.internalNotes,
         isNewArrival: form.isNewArrival,

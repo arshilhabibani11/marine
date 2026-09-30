@@ -48,6 +48,11 @@ export async function fetchPublishedProducts({ maxPages = 50, pageSize = 100 } =
         description: p.description || p.shortDescription || '',
         shortDescription: p.shortDescription || '',
         images: (p.images || []).map((i) => ({ url: i.url, alt: i.altText || '' })),
+        // Structured identity columns (win over description parsing)
+        manufacturer: p.manufacturer || null,
+        modelNumber: p.modelNumber || null,
+        mpn: p.mpn || null,
+        impaCode: p.impaCode || null,
         updatedAt: p.updatedAt || null,
       })
     }
@@ -64,7 +69,7 @@ export async function fetchPublishedProducts({ maxPages = 50, pageSize = 100 } =
  * src/lib/seo/productSeo.ts (kept in sync — this is a plain-JS twin for
  * build-time scripts that cannot import TS).
  */
-export function extractIdentityQuick(description) {
+export function extractIdentityQuick(description, structured) {
   const specs = new Map()
   for (const raw of String(description || '').split(/\r?\n/)) {
     const line = raw.trim()
@@ -78,7 +83,7 @@ export function extractIdentityQuick(description) {
     for (const k of keys) if (specs.has(k)) return specs.get(k)
     return undefined
   }
-  return {
+  const fromDescription = {
     model: pick('model', 'model number', 'model no', 'manufacturer model'),
     mpn: pick('mpn', 'manufacturer part number', 'part number'),
     impa: pick('impa code', 'impa', 'impa no'),
@@ -86,6 +91,13 @@ export function extractIdentityQuick(description) {
     size: pick('size', 'nominal size'),
     material: pick('material', 'body material'),
   }
+  // Structured admin columns win (mirrors productSeo.ts)
+  const structuredIdentity = {}
+  if (structured?.manufacturer) structuredIdentity.manufacturer = String(structured.manufacturer).trim()
+  if (structured?.modelNumber) structuredIdentity.model = String(structured.modelNumber).trim()
+  if (structured?.mpn) structuredIdentity.mpn = String(structured.mpn).trim()
+  if (structured?.impaCode) structuredIdentity.impa = String(structured.impaCode).trim()
+  return { ...fromDescription, ...structuredIdentity }
 }
 
 const TYPE_NOUN_RE = /\b((?:marine|industrial|hydraulic|pneumatic|electric|electrical|deck|engine|ship|vessel)\s+)?[a-z]{3,}(\s+(plug|pump|valve|motor|sensor|switch|gauge|filter|separator|plate|fitting|coupling|bearing|seal|gasket|controller|drive|starter|relay|breaker|transformer|cable|hose|pipe|strainer|regulator|actuator|compressor|winch|windlass|anchor|chain|shackle|block|hook|lamp|light|panel|meter|monitor|camera|antenna|horn|bell|whistle))\b/i
@@ -108,7 +120,12 @@ export function extractProductTypeQuick(name, category) {
 
 /** Build the fact-grounded SEO title for a product (matches productSeo.ts). */
 export function buildProductTitleQuick(p) {
-  const identity = extractIdentityQuick(p.description)
+  const identity = extractIdentityQuick(p.description, {
+    manufacturer: p.manufacturer,
+    modelNumber: p.modelNumber,
+    mpn: p.mpn,
+    impaCode: p.impaCode,
+  })
   const productType = extractProductTypeQuick(p.name, p.category)
   const brand = p.brand && p.brand !== 'Unknown' ? p.brand : undefined
   const model = identity.model || identity.mpn

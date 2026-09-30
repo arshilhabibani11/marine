@@ -28,6 +28,12 @@ export interface ProductSeoInput {
   stockCount: number
   images?: Array<{ url: string; alt?: string }>
   makeOffer?: boolean
+  // Structured identity from the admin (DB columns). When present these WIN
+  // over values parsed out of the free-text description.
+  manufacturer?: string | null
+  modelNumber?: string | null
+  mpn?: string | null
+  impaCode?: string | null
 }
 
 export interface ProductSeoResult {
@@ -109,10 +115,15 @@ interface Identity {
 }
 
 /**
- * Pull verified identity fields from the parsed Item Specifics. Only values
- * the admin actually entered are returned — no defaults, no guesses.
+ * Pull verified identity fields for a product. Structured admin columns win;
+ * Item Specifics parsed from the description fill anything still unknown.
+ * Only real values are returned — no defaults, no guesses.
  */
-export function extractIdentity(_name: string, description?: string): Identity {
+export function extractIdentity(
+  _name: string,
+  description?: string,
+  structured?: { manufacturer?: string | null; modelNumber?: string | null; mpn?: string | null; impaCode?: string | null },
+): Identity {
   const parsed = parseDescription(description || '')
   const specs = new Map(parsed.itemSpecs.map((s) => [s.label.toLowerCase(), s.value]))
 
@@ -124,7 +135,7 @@ export function extractIdentity(_name: string, description?: string): Identity {
     return undefined
   }
 
-  return {
+  const fromDescription = {
     model: pick('model', 'model number', 'model no', 'manufacturer model'),
     mpn: pick('mpn', 'manufacturer part number', 'part number'),
     impa: pick('impa code', 'impa', 'impa no'),
@@ -132,6 +143,15 @@ export function extractIdentity(_name: string, description?: string): Identity {
     size: pick('size', 'nominal size'),
     material: pick('material', 'body material'),
   }
+
+  // Structured admin-entered columns take precedence (already tidy in DB).
+  const structuredIdentity: Identity = {}
+  if (isUsable(structured?.manufacturer)) structuredIdentity.manufacturer = tidy(structured!.manufacturer!)
+  if (isUsable(structured?.modelNumber)) structuredIdentity.model = tidy(structured!.modelNumber!)
+  if (isUsable(structured?.mpn)) structuredIdentity.mpn = tidy(structured!.mpn!)
+  if (isUsable(structured?.impaCode)) structuredIdentity.impa = tidy(structured!.impaCode!)
+
+  return { ...fromDescription, ...structuredIdentity }
 }
 
 /**
@@ -177,7 +197,12 @@ export function buildH1(input: ProductSeoInput, identity: Identity, productType:
 
 /** Build the full SEO payload for a product. */
 export function buildProductSeo(input: ProductSeoInput): ProductSeoResult {
-  const identity = extractIdentity(input.name, input.description)
+  const identity = extractIdentity(input.name, input.description, {
+    manufacturer: input.manufacturer,
+    modelNumber: input.modelNumber,
+    mpn: input.mpn,
+    impaCode: input.impaCode,
+  })
   const productType = extractProductType(input.name, input.category)
   const title = buildProductTitle(input, identity, productType)
   const metaDescription = buildMetaDescription(input, identity, productType)
