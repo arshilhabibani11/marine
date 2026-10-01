@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { rateLimit } from 'express-rate-limit'
 import { authenticateCustomer, optionalCustomerAuth, AuthRequest } from '../../middleware/auth.js'
 import { asyncHandler, validateBody, validateParams } from '../../middleware/validate.js'
 import { z } from 'zod'
@@ -17,11 +18,25 @@ const offerSchema = z.object({
   message: z.string().optional(),
 })
 
+// ─── Submission flood limiter (G47) ────────────────────────────
+// Tighter than the global public limiter: offer creation is a write + email
+// send. 8 per 10 min per IP absorbs a human fixing typos and stops scripted
+// bursts between the app-level guard checks. Relaxed under Playwright so
+// e2e suites are never throttled.
+const submitOfferLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: process.env.PLAYWRIGHT_TEST ? 10000 : 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many offers submitted. Please try again later.' },
+})
+
 // ─── Submit Offer ──────────────────────────────────────────────
 // Logged-in submissions attach the customer (offer becomes payable from
 // their account); guests keep the existing email-lead behavior. The amount
-// is input only — the server validates eligibility and authoritative values.
-router.post('/', optionalCustomerAuth, validateBody(offerSchema), asyncHandler(async (req: AuthRequest, res) => {
+// is input only — the server validates eligibility, authoritative values,
+// and abuse budgets (G47).
+router.post('/', submitOfferLimiter, optionalCustomerAuth, validateBody(offerSchema), asyncHandler(async (req: AuthRequest, res) => {
   try {
     const email = req.user?.email || req.body.customerEmail
     if (!email) {
@@ -33,6 +48,9 @@ router.post('/', optionalCustomerAuth, validateBody(offerSchema), asyncHandler(a
       // A signed-in customer's offer is always bound to their account —
       // the client-supplied email is used only for correspondence.
       customerId: req.user?.id ?? null,
+      // trust proxy = 1 in server.ts → req.ip is the real client IP behind
+      // the proxy. Best-effort only: undefined simply disables the IP breaker.
+      submissionIp: req.ip,
     })
     sendSuccess(res, {
       message: 'Offer submitted successfully',

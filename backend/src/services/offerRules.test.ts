@@ -17,6 +17,13 @@ import {
   eligibilityMessage,
   OFFER_PAYMENT_WINDOW_MS,
   OPEN_DECISION_STATUSES,
+  checkOpenOfferLimit,
+  checkDailyEmailLimit,
+  checkDailyIpLimit,
+  offerGuardMessage,
+  OFFER_MAX_OPEN_PER_EMAIL,
+  OFFER_MAX_PER_EMAIL_PER_DAY,
+  OFFER_MAX_PER_IP_PER_DAY,
 } from './offerRules.js'
 
 // ─── TEST_004/005/020: negotiated vs listed price separation ──
@@ -157,4 +164,48 @@ test('OPEN_DECISION_STATUSES matches the guarded transition table', () => {
     assert.equal(canDecide(status, 'accept'), true)
   }
   assert.equal(OPEN_DECISION_STATUSES.length, 2)
+})
+
+// ─── G47: abuse guards ────────────────────────────────────────
+
+test('open-offer limit blocks only at the ceiling, not below it', () => {
+  const email = 'buyer@example.com'
+  assert.equal(checkOpenOfferLimit(email, 0), null)
+  assert.equal(checkOpenOfferLimit(email, OFFER_MAX_OPEN_PER_EMAIL - 1), null)
+  assert.equal(checkOpenOfferLimit(email, OFFER_MAX_OPEN_PER_EMAIL), 'too_many_open_offers')
+  assert.equal(checkOpenOfferLimit(email, OFFER_MAX_OPEN_PER_EMAIL + 7), 'too_many_open_offers')
+})
+
+test('abuse guards require an email', () => {
+  assert.equal(checkOpenOfferLimit(undefined, 0), 'email_required')
+  assert.equal(checkOpenOfferLimit(null, 0), 'email_required')
+  assert.equal(checkOpenOfferLimit('', 0), 'email_required')
+  assert.equal(checkDailyEmailLimit('', 0), 'email_required')
+})
+
+test('daily email limit is a rolling-window ceiling', () => {
+  const email = 'buyer@example.com'
+  assert.equal(checkDailyEmailLimit(email, 0), null)
+  assert.equal(checkDailyEmailLimit(email, OFFER_MAX_PER_EMAIL_PER_DAY - 1), null)
+  assert.equal(checkDailyEmailLimit(email, OFFER_MAX_PER_EMAIL_PER_DAY), 'email_rate_limited')
+})
+
+test('IP breaker trips at the ceiling and never fails on missing IP', () => {
+  assert.equal(checkDailyIpLimit('203.0.113.9', OFFER_MAX_PER_IP_PER_DAY), 'ip_rate_limited')
+  assert.equal(checkDailyIpLimit('203.0.113.9', OFFER_MAX_PER_IP_PER_DAY - 1), null)
+  assert.equal(checkDailyIpLimit(undefined, 9999), null)
+  assert.equal(checkDailyIpLimit(null, 9999), null)
+})
+
+test('guard limits are generous enough for legitimate procurement', () => {
+  // Shared NATs and crew offices must not be caught by the IP breaker.
+  assert.ok(OFFER_MAX_PER_IP_PER_DAY >= 20)
+  // A real buyer can negotiate several items in a day.
+  assert.ok(OFFER_MAX_PER_EMAIL_PER_DAY > OFFER_MAX_OPEN_PER_EMAIL)
+  // Every guard reason maps to a customer-safe message.
+  const reasons = ['email_required', 'too_many_open_offers', 'email_rate_limited', 'ip_rate_limited'] as const
+  for (const reason of reasons) {
+    assert.equal(typeof offerGuardMessage(reason), 'string')
+    assert.ok(offerGuardMessage(reason).length > 0)
+  }
 })

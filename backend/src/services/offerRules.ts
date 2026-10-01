@@ -129,3 +129,60 @@ export function eligibilityMessage(reason: OfferIneligibilityReason): string {
     case 'amount_invalid': return 'Invalid offer amount'
   }
 }
+
+// ─── Abuse guards (group G47) ─────────────────────────────────
+// Pure decision logic: the service layer counts real rows and feeds the
+// counts in. Keeping the rules dependency-free keeps them unit-testable
+// without a database, same as the eligibility rules above.
+
+/** Max simultaneously OPEN (pending/countered) offers per email. */
+export const OFFER_MAX_OPEN_PER_EMAIL = 5
+/** Max offers one email may submit per rolling 24h window. */
+export const OFFER_MAX_PER_EMAIL_PER_DAY = 10
+/** Max offers one IP may submit per rolling 24h window. Shared NATs
+ *  (ship crews, offices) are common in this market → deliberately generous;
+ *  this breaker stops scripted floods, not humans. */
+export const OFFER_MAX_PER_IP_PER_DAY = 30
+
+/** Open = awaiting an admin decision. Negotiating several RFUs is legitimate. */
+export const OPEN_OFFER_STATUSES = ['pending', 'countered'] as const
+
+/** Guard reason or null when the submission may proceed. */
+export type OfferGuardReason = 'email_required' | 'too_many_open_offers' | 'email_rate_limited' | 'ip_rate_limited'
+
+/**
+ * Email may not open another offer while already holding the maximum number
+ * of open ones — blocks mailbox-flooding without hurting real negotiations.
+ */
+export function checkOpenOfferLimit(email: string | null | undefined, openOfferCount: number): OfferGuardReason | null {
+  if (!email) return 'email_required'
+  if (openOfferCount >= OFFER_MAX_OPEN_PER_EMAIL) return 'too_many_open_offers'
+  return null
+}
+
+/** Rolling 24h submission budget per email. `recentCount` counts offers this email created in the window. */
+export function checkDailyEmailLimit(email: string | null | undefined, recentCount: number): OfferGuardReason | null {
+  if (!email) return 'email_required'
+  if (recentCount >= OFFER_MAX_PER_EMAIL_PER_DAY) return 'email_rate_limited'
+  return null
+}
+
+/**
+ * IP-level breaker for the rolling 24h window. A missing IP never hard-fails
+ * — absent telemetry must not lock customers out.
+ */
+export function checkDailyIpLimit(ip: string | null | undefined, recentCount: number): OfferGuardReason | null {
+  if (!ip) return null
+  if (recentCount >= OFFER_MAX_PER_IP_PER_DAY) return 'ip_rate_limited'
+  return null
+}
+
+/** Customer-safe message per guard reason (no internals leaked). */
+export function offerGuardMessage(reason: OfferGuardReason): string {
+  switch (reason) {
+    case 'email_required': return 'Email is required'
+    case 'too_many_open_offers': return 'You already have several offers awaiting a response. Please wait for those to be answered first.'
+    case 'email_rate_limited': return 'Too many offers submitted recently. Please try again later.'
+    case 'ip_rate_limited': return 'Too many requests from this network. Please try again later.'
+  }
+}

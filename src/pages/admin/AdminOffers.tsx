@@ -24,6 +24,7 @@ import { useToast } from '../../components/admin/toast-context'
 import { ConfirmDialog } from '../../components/admin/ConfirmDialog'
 import { AdminPagination } from '../../components/admin/AdminPagination'
 import type { ApiOffer } from '../../lib/api-types'
+import type { OfferAnalytics } from '../../lib/api/admin'
 
 // Mirrors backend Offer.status values (offerAdminService.ts + rfqService.ts + offerService.ts):
 // pending → accept/reject/counter → accepted → awaiting-payment → paid
@@ -129,6 +130,123 @@ function statusOf(status: string): StatusCfg {
 }
 
 const ITEMS_PER_PAGE = 12
+
+// ─── G46: Offer insights panel ────────────────────────────────
+
+function OfferAnalyticsPanel() {
+  const [data, setData] = useState<OfferAnalytics | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [days, setDays] = useState(30)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setFailed(false)
+    admin.offers.analytics(days)
+      .then((res) => { if (!cancelled) setData(res.analytics ?? null) })
+      .catch(() => { if (!cancelled) setFailed(true) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [days])
+
+  const maxDaily = useMemo(() => Math.max(1, ...(data?.daily.map((d) => d.count) ?? [1])), [data])
+
+  return (
+    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-display text-sm font-extrabold text-[var(--text-primary)]">Offer Insights</h2>
+        <div className="flex gap-1">
+          {[7, 30, 90].map((d) => (
+            <button key={d} onClick={() => setDays(d)} className={`rounded-lg px-2.5 py-1 text-[0.625rem] font-bold transition-all ${days === d ? 'bg-[var(--accent-gold)] text-[var(--btn-blue-text)]' : 'bg-[var(--surface-soft)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}>
+              {d}d
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading && <div className="flex items-center gap-2 py-6 text-xs text-[var(--text-muted)]"><Loader2 size={14} className="animate-spin" /> Loading insights…</div>}
+
+      {failed && (
+        <div className="flex items-center gap-2 py-6 text-xs text-[var(--text-muted)]">
+          <AlertTriangle size={14} className="text-[var(--danger)]" /> Failed to load analytics.
+          <button onClick={() => setDays(days)} className="font-bold text-[var(--accent-teal)] underline">Retry</button>
+        </div>
+      )}
+
+      {data && !loading && (
+        <div className="mt-3 space-y-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            {[
+              { label: 'Offers', value: String(data.snapshot.total) },
+              { label: 'Open', value: String(data.snapshot.openCount) },
+              { label: 'Accept rate', value: data.snapshot.acceptanceRate == null ? '—' : `${data.snapshot.acceptanceRate}%` },
+              { label: 'Negotiated', value: `$${data.snapshot.totalNegotiatedValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}` },
+              { label: 'Avg response', value: data.snapshot.avgResponseHours == null ? '—' : `${data.snapshot.avgResponseHours}h` },
+            ].map((kpi) => (
+              <div key={kpi.label} className="rounded-xl bg-[var(--surface-soft)] p-3">
+                <p className="text-[0.625rem] font-bold uppercase tracking-wide text-[var(--text-muted)]">{kpi.label}</p>
+                <p className="font-display text-lg font-extrabold text-[var(--text-primary)]">{kpi.value}</p>
+              </div>
+            ))}
+          </div>
+
+          <div>
+            <p className="text-[0.625rem] font-bold uppercase tracking-wide text-[var(--text-muted)]">Submissions per day</p>
+            <div className="mt-1 flex h-16 items-end gap-[2px]">
+              {data.daily.map((d) => (
+                <div key={d.date} title={`${d.date}: ${d.count}`} className="min-h-[2px] flex-1 rounded-t bg-[var(--accent-gold)]/70" style={{ height: `${Math.max(4, (d.count / maxDaily) * 100)}%` }} />
+              ))}
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <p className="text-[0.625rem] font-bold uppercase tracking-wide text-[var(--text-muted)]">Most requested products</p>
+              <ul className="mt-1 space-y-1">
+                {data.topProducts.length === 0 && <li className="text-xs text-[var(--text-muted)]">No product-linked offers yet</li>}
+                {data.topProducts.map((p) => (
+                  <li key={p.key} className="flex items-center justify-between gap-2 text-xs text-[var(--text-secondary)]">
+                    <span className="truncate">{p.label}</span>
+                    <span className="font-bold text-[var(--text-primary)]">{p.count}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <p className="text-[0.625rem] font-bold uppercase tracking-wide text-[var(--text-muted)]">Top requesters</p>
+              <ul className="mt-1 space-y-1">
+                {data.topRequesters.length === 0 && <li className="text-xs text-[var(--text-muted)]">No offers in this window</li>}
+                {data.topRequesters.map((r) => (
+                  <li key={r.key} className="flex items-center justify-between gap-2 text-xs text-[var(--text-secondary)]">
+                    <span className="truncate">{r.label}</span>
+                    <span className="font-bold text-[var(--text-primary)]">{r.count}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          {data.burstFlags.length > 0 && (
+            <div className="rounded-xl border border-[var(--accent-gold)]/30 bg-[var(--accent-gold)]/5 p-3">
+              <p className="flex items-center gap-1.5 text-[0.625rem] font-bold uppercase tracking-wide text-[var(--accent-gold)]">
+                <AlertTriangle size={12} /> Unusual submission pressure (last 24h)
+              </p>
+              <ul className="mt-1.5 space-y-1">
+                {data.burstFlags.map((b) => (
+                  <li key={b.email} className="flex items-center justify-between gap-2 text-xs text-[var(--text-secondary)]">
+                    <span className="truncate">{b.email}</span>
+                    <span className={`font-bold ${b.severity === 'high' ? 'text-[var(--danger)]' : 'text-[var(--accent-gold)]'}`}>{b.count} offers</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function AdminOffers() {
   const { toast } = useToast()
@@ -311,6 +429,8 @@ export default function AdminOffers() {
           </button>
         ))}
       </div>
+
+      <OfferAnalyticsPanel />
 
       <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
         <div className="relative">

@@ -5,6 +5,14 @@ import { sendOfferDecision } from './emailSenders.js'
 import logger from '../utils/logger.js'
 import type { AuthUser } from '../middleware/auth.js'
 import { canDecide, acceptedAmountOf, OFFER_PAYMENT_WINDOW_MS, type AdminOfferAction } from './offerRules.js'
+import {
+  computeOfferSnapshot,
+  bucketOffersByDay,
+  topProducts,
+  topRequesters,
+  flagBurstRequesters,
+  type AnalyticsOffer,
+} from './offerAnalytics.js'
 
 /** Guarded admin decision wrapper: re-checks the current status atomically so
  * double-clicks and racing admins can never double-apply a decision. */
@@ -81,6 +89,70 @@ export async function listOffers(params: { status?: string; productId?: string; 
 
 function csvCell(value: unknown): string {
   return `"${String(value ?? '').replace(/"/g, '""')}"`
+}
+
+// ─── Analytics (G46) ─────────────────────────────────────────
+
+export interface OfferAnalyticsResult {
+  windowDays: number
+  windowStart: string
+  windowEnd: string
+  snapshot: ReturnType<typeof computeOfferSnapshot>
+  daily: ReturnType<typeof bucketOffersByDay>
+  topProducts: ReturnType<typeof topProducts>
+  topRequesters: ReturnType<typeof topRequesters>
+  burstFlags: ReturnType<typeof flagBurstRequesters>
+}
+
+/**
+ * Trailing-window offer analytics for the admin dashboard. All math lives in
+ * the pure analytics module; this only scopes rows and shapes the response.
+ */
+export async function getOfferAnalytics(days = 30): Promise<OfferAnalyticsResult> {
+  const windowDays = Math.min(Math.max(Number(days) || 30, 7), 90)
+  const now = new Date()
+  const windowStart = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000)
+
+  const rows = await prisma.offer.findMany({
+    where: { createdAt: { gte: windowStart } },
+    select: {
+      status: true,
+      offeredPrice: true,
+      counterPrice: true,
+      acceptedPrice: true,
+      quantity: true,
+      createdAt: true,
+      respondedAt: true,
+      productId: true,
+      customerEmail: true,
+      product: { select: { name: true, sku: true } },
+    },
+  })
+
+  const offers: AnalyticsOffer[] = rows.map((r) => ({
+    status: r.status,
+    offeredPrice: r.offeredPrice,
+    counterPrice: r.counterPrice,
+    acceptedPrice: r.acceptedPrice,
+    quantity: r.quantity,
+    createdAt: r.createdAt,
+    respondedAt: r.respondedAt,
+    productId: r.productId,
+    productName: r.product?.name ?? null,
+    productSku: r.product?.sku ?? null,
+    customerEmail: r.customerEmail,
+  }))
+
+  return {
+    windowDays,
+    windowStart: windowStart.toISOString(),
+    windowEnd: now.toISOString(),
+    snapshot: computeOfferSnapshot(offers),
+    daily: bucketOffersByDay(offers, windowDays, now),
+    topProducts: topProducts(offers, 5),
+    topRequesters: topRequesters(offers, 5),
+    burstFlags: flagBurstRequesters(offers, now),
+  }
 }
 
 export async function exportOffersCsv() {

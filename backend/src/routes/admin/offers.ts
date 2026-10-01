@@ -21,6 +21,13 @@ router.get('/', asyncHandler(async (req, res) => {
   }))
 }))
 
+// ─── Analytics (G46) ─────────────────────────────────────────
+// Declared before '/:id' so it isn't captured as an offer id.
+router.get('/analytics', requireRole('sales-agent'), asyncHandler(async (req, res) => {
+  const days = Number(req.query.days) || 30
+  sendSuccess(res, { analytics: await offerAdminService.getOfferAnalytics(days) })
+}))
+
 // ─── Export Offers CSV ───────────────────────────────────────
 // Declared before '/:id' so it isn't captured as an offer id.
 router.get('/export/csv', requireRole('sales-agent'), asyncHandler(async (_req, res) => {

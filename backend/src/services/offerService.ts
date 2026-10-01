@@ -10,6 +10,11 @@ import {
   isPayableStatus,
   acceptedAmountOf,
   OFFER_PAYMENT_WINDOW_MS,
+  OPEN_OFFER_STATUSES,
+  checkOpenOfferLimit,
+  checkDailyEmailLimit,
+  checkDailyIpLimit,
+  offerGuardMessage,
 } from './offerRules.js'
 import type { Prisma } from '@prisma/client'
 
@@ -22,6 +27,8 @@ export interface SubmitOfferInput {
   quantity?: number
   message?: string
   customerId?: string | null
+  /** Best-effort submitter IP (trust-proxy-aware) for the G47 flood breaker. */
+  submissionIp?: string | null
 }
 
 /**
@@ -57,6 +64,25 @@ export async function submitOffer(data: SubmitOfferInput) {
     throw Object.assign(new Error('Invalid offer amount'), { status: 400 })
   }
 
+  // ── Abuse guards (G47) — fail fast, cheapest first ──────────
+  // Open-offer ceiling + rolling 24h budgets per email, then an IP-level
+  // flood breaker. All decided server-side from two cheap indexed counts.
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+  const [openCount, recentForEmail, recentForIp] = await Promise.all([
+    prisma.offer.count({ where: { customerEmail: data.customerEmail, status: { in: [...OPEN_OFFER_STATUSES] } } }),
+    prisma.offer.count({ where: { customerEmail: data.customerEmail, createdAt: { gte: dayAgo } } }),
+    data.submissionIp
+      ? prisma.offer.count({ where: { submissionIp: data.submissionIp, createdAt: { gte: dayAgo } } })
+      : Promise.resolve(0),
+  ])
+  const guard =
+    checkOpenOfferLimit(data.customerEmail, openCount) ??
+    checkDailyEmailLimit(data.customerEmail, recentForEmail) ??
+    checkDailyIpLimit(data.submissionIp, recentForIp)
+  if (guard) {
+    throw Object.assign(new Error(offerGuardMessage(guard)), { status: 429 })
+  }
+
   const offer = await prisma.offer.create({
     data: {
       offerNumber: await generateOfferNumber(),
@@ -66,6 +92,7 @@ export async function submitOffer(data: SubmitOfferInput) {
       offeredPrice,
       quantity,
       message: data.message,
+      submissionIp: data.submissionIp || null,
       status: 'pending',
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
     },

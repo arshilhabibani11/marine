@@ -14,6 +14,31 @@ import type {
 } from '../api-types'
 import type { ApiDashboardStats } from '../api-types'
 
+// Offer analytics (G46) — mirrors backend OfferAnalyticsResult
+// (services/offerAdminService.ts → offerAnalytics.ts).
+export interface OfferAnalytics {
+  windowDays: number
+  windowStart: string
+  windowEnd: string
+  snapshot: {
+    total: number
+    byStatus: Record<string, number>
+    openCount: number
+    decidedCount: number
+    acceptedOrPaidCount: number
+    rejectedCount: number
+    acceptanceRate: number | null
+    rejectionRate: number | null
+    avgResponseHours: number | null
+    totalNegotiatedValue: number
+    negotiatedCount: number
+  }
+  daily: { date: string; count: number }[]
+  topProducts: { key: string; label: string; count: number }[]
+  topRequesters: { key: string; label: string; count: number }[]
+  burstFlags: { email: string; count: number; windowHours: number; severity: 'watch' | 'high' }[]
+}
+
 // Shapes returned by the admin dashboard endpoints (see backend
 // services/dashboardService.ts — kept in sync with the canonical DashboardStats).
 export interface DashboardAlertsResponse {
@@ -150,6 +175,8 @@ export const admin = {
 
   // Offers
   offers: {
+    analytics: (days = 30) =>
+      api.get<{ analytics: OfferAnalytics }>(`/admin/offers/analytics?days=${days}`, { auth: 'admin' }),
     list: (params?: Record<string, string>) => {
       const qs = params ? '?' + new URLSearchParams(params).toString() : ''
       return api.get<{ offers: ApiOffer[]; pagination: Pagination }>(`/admin/offers${qs}`, { auth: 'admin' })

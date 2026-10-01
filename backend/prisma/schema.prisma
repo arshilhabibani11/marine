@@ -462,12 +462,16 @@ model Offer {
   // lifecycle; the order carries the historical pricing snapshot.
   orderId       String?  @map("order_id") @db.Uuid
   order         Order?   @relation("OfferOrder")
+  // Submitter IP (best-effort, from trust-proxy-aware req.ip) — powers the
+  // G47 daily flood breaker. Nullable: absent telemetry never blocks anyone.
+  submissionIp  String?  @map("submission_ip") @db.VarChar(64)
 
   @@index([status])
   @@index([productId])
   @@index([customerEmail])
   @@index([customerId])
   @@index([orderId])
+  @@index([submissionIp, createdAt])
   @@map("offers")
 }
 
