@@ -87,10 +87,14 @@ async function sendEmail(queueId: string): Promise<void> {
 
   const smtp = getTransporter()
   if (!smtp) {
-    emailLog.info({ to: record.toEmail, subject: record.subject }, '[DRY RUN] Would send email (SMTP not configured)')
+    // Honest state: without SMTP credentials nothing can be delivered, so the
+    // row must NOT be marked 'sent' (that made undelivered mail look delivered
+    // and hid outages — see the 2026-10 email diagnostic). 'skipped' keeps the
+    // original content for inspection/replay without pretending success.
+    emailLog.warn({ to: record.toEmail, subject: record.subject }, 'SMTP not configured — email NOT sent (queued as skipped)')
     await prisma.emailQueue.update({
       where: { id: queueId },
-      data: { status: 'sent', sentAt: new Date() },
+      data: { status: 'skipped', attempts: { increment: 1 }, lastError: 'SMTP not configured (SMTP_HOST/SMTP_USER/SMTP_PASS missing) — message was NOT delivered' },
     })
     return
   }
@@ -130,7 +134,14 @@ export function startEmailQueueProcessor(intervalMs = 60_000) {
     try {
       const pending = await withTimeout(
         prisma.emailQueue.findMany({
-          where: { status: 'retrying', attempts: { lt: MAX_EMAIL_ATTEMPTS } },
+          // 'pending' sweep catches rows whose immediate first attempt never
+          // ran (process restart mid-queue). Only rows older than 2 minutes
+          // are re-claimed so the immediate-send path always goes first.
+          where: {
+            status: { in: ['retrying', 'pending'] },
+            attempts: { lt: MAX_EMAIL_ATTEMPTS },
+            createdAt: { lt: new Date(Date.now() - 2 * 60 * 1000) },
+          },
           orderBy: { createdAt: 'asc' },
           take: 10,
         }),

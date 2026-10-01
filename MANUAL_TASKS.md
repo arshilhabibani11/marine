@@ -168,6 +168,47 @@ Deleted 4 rows: `TEST-PRODUCT-HTTP-MODE` ×3 (drafts) + `TXTEST3` (archived),
 plus their images/specs. Zero offers/orders/eBay listings affected.
 `detect-duplicate-products` now reports a clean catalog.
 
+### MT-12 · Configure SMTP credentials so automated emails actually send (URGENT — sales@ receives nothing)
+
+**Diagnosed 2026-10-01** (`backend/scripts/diag-email-queue.ts`, read-only):
+emails were **never delivered** —
+
+1. **Jul 31 – Aug 11:** SMTP was configured but credentials were wrong —
+   every send failed with `API key is invalid` (all rows `status=failed`,
+   attempts=3).
+2. **After that:** `SMTP_HOST` / `SMTP_USER` / `SMTP_PASS` went missing from
+   the environment — the email service silently switched to **dry-run**,
+   marking messages `sent` in the DB without transmitting anything. RFQ,
+   offer, contact, emergency, and registration notifications all vanished.
+   (Code fix shipped: dry-run now records an honest `skipped` state instead.)
+
+**Fix — set these in Railway (api service → Variables), then redeploy:**
+
+| Variable | Value |
+|---|---|
+| `SMTP_HOST` | `smtp.hostinger.com` |
+| `SMTP_PORT` | `465` |
+| `SMTP_SECURE` | `true` |
+| `SMTP_USER` | a real mailbox you created in Hostinger → Emails, e.g. `noreply@alkatraders.co` |
+| `SMTP_PASS` | that mailbox's password |
+| `EMAIL_FROM` | `sales@alkatraders.co` (or the mailbox above) |
+
+Notes:
+- Use a **real mailbox** created in the Hostinger email panel
+  (`noreply@alkatraders.co` is ideal) — arbitrary usernames fail auth.
+- Hostinger SMTP requires the mailbox to exist; "API key is invalid" errors
+  mean the user/pass pair was wrong, not the mailbox missing.
+- SPF already covers Hostinger (`v=spf1 include:_spf.mail.hostinger.com ~all`),
+  so correctly-authenticated mail will land in inboxes.
+
+**Verify after redeploy:**
+
+1. Submit a test RFQ / contact message on the live site.
+2. `Railway → api → Logs` should show no `Email delivery failed` errors.
+3. Run `cd backend && npx tsx scripts/diag-email-queue.ts` — new rows must be
+   `sent` with `attempts ≥ 1`, and sales@ must show up in your actual inbox
+   (check spam once; if it's there, mark it not-spam).
+
 ### MT-11 · Write real category & buying-guide content (B13/B14)
 
 Framework is live (category description renders on the Products page; product
