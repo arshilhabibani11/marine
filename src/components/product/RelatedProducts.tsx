@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { OptimizedImage } from '../ui/OptimizedImage'
 import { getProductImageUrl, isLightColor } from '../../lib/utils'
+import { buildImageAlt } from '../../lib/seo/productSeo'
 import type { Product } from '../../types'
 
 interface RelatedProductsProps {
@@ -30,7 +31,7 @@ export function RelatedProducts({ products }: RelatedProductsProps) {
                 <div className="aspect-square w-full flex items-center justify-center p-3">
                   <OptimizedImage
                     src={getProductImageUrl(item.filename, 0)}
-                    alt={item.name}
+                    alt={buildImageAlt(item.name, item)}
                     width={400}
                     height={400}
                     transformWidth={600}

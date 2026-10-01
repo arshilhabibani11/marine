@@ -188,6 +188,25 @@ export function buildMetaDescription(input: ProductSeoInput, identity: Identity,
   return desc.replace(/,\s*\./, '.').slice(0, 158)
 }
 
+/**
+ * Image alt text: identity-rich when structured data exists
+ * ("Tery PB Scupper Plug IMPA 232483"), otherwise falls back to the
+ * catalog name. Never guesses — unknown identity fields are just omitted.
+ */
+export function buildImageAlt(
+  name: string,
+  identity?: { manufacturer?: string | null; modelNumber?: string | null; mpn?: string | null; impaCode?: string | null },
+): string {
+  const brand = isUsable(identity?.manufacturer) ? tidy(identity!.manufacturer!) : undefined
+  const model = isUsable(identity?.modelNumber) ? tidy(identity!.modelNumber!) : undefined
+  const mpn = isUsable(identity?.mpn) ? tidy(identity!.mpn!) : undefined
+  const impa = isUsable(identity?.impaCode) ? `IMPA ${tidy(identity!.impaCode!).replace(/\s+/g, '')}` : undefined
+
+  const fromIdentity = [brand, model || mpn, impa].filter(Boolean).join(' ')
+  if (fromIdentity && fromIdentity.length >= 12) return fromIdentity.slice(0, 120)
+  return tidy(name).slice(0, 120)
+}
+
 /** H1 mirrors the title without the identifier tail. */
 export function buildH1(input: ProductSeoInput, identity: Identity, productType: string): string {
   const brand = isUsable(input.brand) && input.brand !== 'Unknown' ? tidy(input.brand) : undefined

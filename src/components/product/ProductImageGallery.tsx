@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, ZoomIn, Share2, ImageOff } from 'lucide-reac
 import { useTranslation } from 'react-i18next'
 import { OptimizedImage } from '../ui/OptimizedImage'
 import { getProductImageUrl, isLightColor } from '../../lib/utils'
+import { buildImageAlt } from '../../lib/seo/productSeo'
 import type { Product } from '../../types'
 
 interface ProductImageGalleryProps {
@@ -172,7 +173,7 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
             <OptimizedImage
               key={active.url}
               src={active.url}
-              alt={active.alt || product.name}
+              alt={active.alt || buildImageAlt(product.name, product)}
               width={1200}
               height={1200}
               loading="eager"

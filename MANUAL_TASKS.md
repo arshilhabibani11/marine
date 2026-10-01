@@ -134,6 +134,75 @@ Create the project(s), put the DSNs in Railway env vars (`SENTRY_DSN_FRONTEND`,
 Neon dashboard → project → **Backups / PITR**: confirm point-in-time restore is
 available on the current plan and do one test restore into a throwaway branch.
 
+### MT-8 · Search Console API access (unlocks B10 automation)
+
+The sitemap is already auto-generated and MT-2 covers one-time submission.
+Automating Search Console (impressions/clicks pull, index-coverage monitoring)
+needs Google API credentials:
+
+1. Google Cloud Console → create a project → enable the **Search Console API**.
+2. Create a **service account** (or OAuth client) and add its email as a
+   **property owner/delegated user** in Search Console.
+3. Put the JSON key in Railway (`GSC_SERVICE_ACCOUNT_JSON`, api service).
+
+Until then, review performance manually at search.google.com/search-console.
+
+### MT-9 · Merchant Center Content API (unlocks automated feed push, B11)
+
+The merchant feed route is live (`/api/feeds/merchant-center.xml`) and MT-1
+covers manual submission. To have Google pull/refresh automatically or to push
+via API later:
+
+1. In Merchant Center link a Google Cloud OAuth client / service account.
+2. Enable the **Content API v2** and grant it to the MC account.
+3. Store credentials in Railway (`GMC_*` vars).
+
+Cheapest path first: in MT-1, schedule the feed as a **scheduled fetch** in
+Merchant Center (`https://api.alkatraders.co/api/feeds/merchant-center.xml`) —
+no credentials needed.
+
+### MT-10 · Remove leftover test products from prod DB (found by B17 audit)
+
+`detect-duplicate-products` found test residue in the production database:
+`TEST-PRODUCT-HTTP-MODE` (×2) and `TXTEST3`. They are published, have no
+identity fields, and pollute the sitemap/prerender. Delete via Admin → Products
+(or a Prisma script) and re-run
+`npx tsx backend/scripts/detect-duplicate-products.ts` to confirm 0 published
+junk rows. Real products should then get identity fields via MT-4.
+
+### MT-11 · Write real category & buying-guide content (B13/B14)
+
+Framework is live (category description renders on the Products page; product
+pages render structured identity). What's missing is **human-approved copy** —
+not AI filler. For each real category (and the top ~5 IMPA/industry queries
+Alka actually wins on), write 2–4 factual paragraphs: what it is, materials,
+supplier standards, and how to request a quote. Paste into the category
+`description` field (admin) — the page renders it automatically.
+
+---
+
+## Decision records — group B (SEO architecture)
+
+- **B9 · Slug/URL migration — deferred.** Current URLs are stable,
+  prerendered, and indexed (42 URLs, trailing-slash, sitemap'd). Changing slug
+  schemes forces 301 mapping + re-indexing for zero measurable gain on an
+  8-item catalog. Revisit only if the real catalog grows and identity-based
+  slugs (`/product/impa-232483-scupper-plug/`) become worth the migration.
+- **B12 · Per-brand landing pages — deferred.** `Brands.tsx` is an honest
+  showcase with live product counts; thin per-brand pages would hurt, not
+  help, with 8 products. Revisit at ≥5 real brands.
+- **B13/B14 · Category content & buying guides — human copy required.** See
+  MT-11; the rendering framework is done and waiting on real text.
+- **B15/D37 · Image alt text — done in code.** `buildImageAlt()` builds
+  identity-rich alts (brand + model + IMPA) from structured fields, falling
+  back to the catalog name; wired into grid, gallery, and related products.
+- **B22 · Variant strategy — single pages.** No real size/variant rows exist;
+  each item is its own product page (correct for IMPA-part catalogs). If
+  genuine variants appear, model them as separate products sharing identity
+  (brand/model/IMPA) rather than introducing a variant schema.
+- **B10/B11 · Search Console & Merchant Center APIs — credential-gated.**
+  See MT-8/MT-9; no code until credentials exist.
+
 ---
 
 ## ✅ Completed manual items
