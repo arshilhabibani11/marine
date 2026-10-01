@@ -161,14 +161,12 @@ Cheapest path first: in MT-1, schedule the feed as a **scheduled fetch** in
 Merchant Center (`https://api.alkatraders.co/api/feeds/merchant-center.xml`) —
 no credentials needed.
 
-### MT-10 · Remove leftover test products from prod DB (found by B17 audit)
+### MT-10 · ~~Remove leftover test products from prod DB~~ — DONE 2026-10-01
 
-`detect-duplicate-products` found test residue in the production database:
-`TEST-PRODUCT-HTTP-MODE` (×2) and `TXTEST3`. They are published, have no
-identity fields, and pollute the sitemap/prerender. Delete via Admin → Products
-(or a Prisma script) and re-run
-`npx tsx backend/scripts/detect-duplicate-products.ts` to confirm 0 published
-junk rows. Real products should then get identity fields via MT-4.
+Resolved by `backend/scripts/remove-test-products.ts` (dry-run + `--apply`).
+Deleted 4 rows: `TEST-PRODUCT-HTTP-MODE` ×3 (drafts) + `TXTEST3` (archived),
+plus their images/specs. Zero offers/orders/eBay listings affected.
+`detect-duplicate-products` now reports a clean catalog.
 
 ### MT-11 · Write real category & buying-guide content (B13/B14)
 
@@ -207,7 +205,8 @@ supplier standards, and how to request a quote. Paste into the category
 
 ## ✅ Completed manual items
 
-*(none yet — move items here with a date once confirmed)*
+- **MT-10 (2026-10-01)** — test products removed from prod DB via
+  `remove-test-products.ts --apply`; catalog verified clean.
 
 ---
 
